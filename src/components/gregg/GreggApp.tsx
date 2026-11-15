@@ -11,8 +11,8 @@ type Saved = { series: Series; gloss: boolean; colour: boolean; pageSize: PdfOpt
 const DEFAULT: Saved = { series: "centennial", gloss: true, colour: true, pageSize: "steno", names: true, custom: { centennial: {}, simplified: {}, anniversary: {} }, text: "" };
 const SAMPLE = "When called today for the continuation of trial, Atty. Nathaniel Clarus appeared as plaintiffs’ counsel in Civil Case No. 958.\nCalled to the witness stand is the fourth witness, Jessica M. Lomongo, whose testimony was completed today.";
 
-const UNIT = 11;            // px per stroke unit on screen
-const LINE_H = 44;          // px per ruled line
+const UNIT = 13;            // px per stroke unit on screen
+const LINE_H = 52;          // px per ruled line
 
 export function GreggApp() {
   const [s, setS] = useState<Saved>(DEFAULT);
@@ -196,7 +196,7 @@ function PadLine({ line, first, gloss, colour }: { line: Line; first: boolean; g
           const o = w.outline;
           const cls = "outline" + (!colour ? "" : w.source === "brief" || w.source === "custom" ? " brief" : w.source === "guess" || w.source === "filipino" ? " guess" : "");
           return (
-            <g key={i} className={cls} transform={`translate(${x - o.minX * UNIT} ${base - (o.minY + o.h) * UNIT}) scale(${UNIT})`} strokeWidth={1.6 / UNIT}>
+            <g key={i} className={cls} transform={`translate(${x - o.minX * UNIT} ${base - (o.minY + o.h) * UNIT}) scale(${UNIT})`} strokeWidth={1.9 / UNIT}>
               <path d={o.d} />
               {o.dots.map((d, j) => <circle key={j} cx={d.x} cy={d.y} r={0.07} fill="currentColor" stroke="none" />)}
               {o.dashes.map((d, j) => <path key={"d" + j} d={`M${d.x} ${d.y}h0.45`} />)}

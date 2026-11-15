@@ -17,8 +17,8 @@ const SIZES = { steno: [432, 648], letter: [612, 792], a4: [595.28, 841.89] } as
 
 export async function buildPdf(paras: Para[], opt: PdfOptions): Promise<Uint8Array> {
   const [W, H] = SIZES[opt.pageSize];
-  const unit = opt.unit || 7.5;
-  const lineGap = opt.lineGap || (opt.gloss ? 30 : 26);
+  const unit = opt.unit || 8.5;
+  const lineGap = opt.lineGap || (opt.gloss ? 33 : 29);
   const margin = { top: 46, bottom: 36, side: 28 };
   const twoCols = true;
   const colGap = 14;

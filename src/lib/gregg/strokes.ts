@@ -49,7 +49,7 @@ export const STROKES: Record<string, StrokeDef> = {
   X: { len: 0.45, angle: DOWN + 12 * DEG, curve: +1, depth: 0.3 },
   Y: { len: 0.3, angle: 0, curve: +1, depth: 0.9 },     // small loop
 };
-export const SMALL_R = 0.21, LARGE_R = 0.36, HOOK_R = 0.24;
+export const SMALL_R = 0.24, LARGE_R = 0.42, HOOK_R = 0.26;
 
 const unit = (a: number): Pt => ({ x: Math.cos(a), y: Math.sin(a) });
 const add = (p: Pt, q: Pt, k = 1): Pt => ({ x: p.x + q.x * k, y: p.y + q.y * k });
@@ -77,18 +77,35 @@ function box(pts: Pt[]): [Pt, Pt] {
 }
 
 /* ---------- vowels ---------- */
-// A full circle tangent to the path at P, drawn on the side of unit normal n.
-function circleSeg(P: Pt, r: number, n: Pt, travel: Pt): Seg {
+// A circle written as a loop: the pen enters at P travelling along dirIn, goes round the circle on the side of
+// unit normal n, and leaves at the point where it is already travelling along dirOut (a full circle when there is
+// no following stroke, or when the two directions meet there anyway).
+function circleSeg(P: Pt, r: number, n: Pt, dirIn: Pt, dirOut: Pt | null): Seg {
   const c = add(P, n, r);
-  // go around the circle and come back to P. Sweep direction: keep the motion continuous with travel.
-  const cross = travel.x * n.y - travel.y * n.x; // >0 when n is to the right of travel (clockwise turn in screen coords)
-  const sweep = cross > 0 ? 1 : 0;
-  const opp = add(c, n, r);
-  const d = `A${f(r)} ${f(r)} 0 0 ${sweep} ${f(opp.x)} ${f(opp.y)}A${f(r)} ${f(r)} 0 0 ${sweep} ${f(P.x)} ${f(P.y)}`;
-  return { d, end: P, bbox: [{ x: c.x - r, y: c.y - r }, { x: c.x + r, y: c.y + r }] };
+  const a0 = Math.atan2(P.y - c.y, P.x - c.x);
+  const t0 = { x: -Math.sin(a0), y: Math.cos(a0) };              // tangent for increasing angle (clockwise on screen)
+  const s = t0.x * dirIn.x + t0.y * dirIn.y >= 0 ? 1 : -1;
+  const sweepFlag = s > 0 ? 1 : 0;
+  const TAU = Math.PI * 2;
+  let a1 = a0;
+  if (dirOut) a1 = Math.atan2(-s * dirOut.x, s * dirOut.y);
+  let sweep = s > 0 ? (a1 - a0) % TAU : (a0 - a1) % TAU;
+  if (sweep < 0) sweep += TAU;
+  if (sweep < 0.6) sweep += TAU;                                  // always a real loop, never a slight bend
+  const Q = { x: c.x + r * Math.cos(a1), y: c.y + r * Math.sin(a1) };
+  let d: string;
+  if (Math.abs(sweep - TAU) < 1e-6 || sweep > TAU - 1e-6) {
+    const opp = add(c, n, r);
+    d = `A${f(r)} ${f(r)} 0 0 ${sweepFlag} ${f(opp.x)} ${f(opp.y)}A${f(r)} ${f(r)} 0 0 ${sweepFlag} ${f(P.x)} ${f(P.y)}`;
+    return { d, end: P, bbox: [{ x: c.x - r, y: c.y - r }, { x: c.x + r, y: c.y + r }] };
+  }
+  const large = sweep > Math.PI ? 1 : 0;
+  d = `A${f(r)} ${f(r)} 0 ${large} ${sweepFlag} ${f(Q.x)} ${f(Q.y)}`;
+  return { d, end: Q, bbox: [{ x: c.x - r, y: c.y - r }, { x: c.x + r, y: c.y + r }] };
 }
 // A flattened circle (the -ily ending): an ellipse tangent at P, long axis along the travel direction.
 function ellipseSeg(P: Pt, rx: number, ry: number, n: Pt, travel: Pt): Seg {
+  // full flattened loop, returning to P
   const c = add(P, n, ry);
   const rot = Math.atan2(travel.y, travel.x) * 180 / Math.PI;
   const cross = travel.x * n.y - travel.y * n.x;
@@ -144,7 +161,7 @@ export function outlineFor(tokens: Token[]): Outline {
       // a detached mark a little to the right of where the word ended
       const p0 = { x: pen.x + 0.55, y: pen.y - 0.45 };
       if (t.m === "s") { const seg = strokeSeg(p0, STROKES.SL); parts.push(`M${f(p0.x)} ${f(p0.y)}` + seg.d); merge(seg.bbox); }
-      else { const seg = circleSeg(p0, SMALL_R, { x: 0, y: 1 }, { x: 1, y: 0 }); parts.push(`M${f(p0.x)} ${f(p0.y)}` + seg.d); merge(seg.bbox); }
+      else { const seg = circleSeg(p0, SMALL_R, { x: 0, y: 1 }, { x: 1, y: 0 }, null); parts.push(`M${f(p0.x)} ${f(p0.y)}` + seg.d); merge(seg.bbox); }
       parts.push(`M${f(pen.x)} ${f(pen.y)}`);
       return;
     }
@@ -181,13 +198,14 @@ export function outlineFor(tokens: Token[]): Outline {
     if (hPending) { const hp = add(pen, side, -0.55); dots.push(hp); hPending = false; }
 
     const v = t.v;
-    const circle = (r: number) => { const s = circleSeg(pen, r, side, travel); parts.push(s.d); merge(s.bbox); };
+    const dirOut = nextSeg ? nextSeg.dirIn : null;
+    const circle = (r: number) => { const s = circleSeg(pen, r, side, travel, dirOut); parts.push(s.d); merge(s.bbox); pen = s.end; };
     const hook = (open: Pt) => { const s = hookSeg(pen, HOOK_R, open, travel); parts.push(s.d); merge(s.bbox); pen = s.end; };
     const prevKey = prevKeyOf(tokens, i), nextKey = next;
     if (v === "A") circle(LARGE_R);
     else if (v === "E") circle(SMALL_R);
     else if (v === "EF") { const sg = ellipseSeg(pen, 0.34, 0.12, side, travel); parts.push(sg.d); merge(sg.bbox); }
-    else if (v === "I") { circle(LARGE_R); circle(SMALL_R * 0.8); }
+    else if (v === "I") { circle(LARGE_R); const s2 = circleSeg(pen, SMALL_R * 0.75, side, dirOut || travel, null); parts.push(s2.d); merge(s2.bbox); }
     else if (v === "O") {
       // o hook opens upward; on its side (opening toward the next stroke) before n, m, r, l
       const open = nextKey && HORIZ.has(nextKey) && !(prevKey && HORIZ.has(prevKey)) ? { x: 1, y: 0 } : { x: 0, y: -1 };

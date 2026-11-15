@@ -214,7 +214,7 @@ kbd { white-space: nowrap; justify-self: start; padding-inline: 6px !important; 
 .gopts .f > span { font-size: 13px; }
 .pad { margin-top: 26px; background: #FBFAF4; border: 1px solid #D9D6C6; border-radius: 3px; box-shadow: 0 1px 0 #C9C6B5, 0 14px 30px -22px rgba(26, 34, 51, .35); padding: 26px 0 30px; position: relative; overflow: hidden; }
 .pad .spiral { height: 18px; margin: -26px 0 14px; background: repeating-linear-gradient(90deg, transparent 0 22px, #B9B6A6 22px 30px); opacity: .6; }
-.padline { position: relative; height: 44px; border-bottom: 1px solid #BFD3E8; }
+.padline { position: relative; height: 52px; border-bottom: 1px solid #BFD3E8; }
 .padline.first { border-top: 1px solid #BFD3E8; }
 .padline svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
 .padline .eng { position: absolute; left: 0; right: 0; bottom: 1px; font: 10px/1 var(--ui); color: #8C96A8; white-space: nowrap; overflow: hidden; pointer-events: none; }
