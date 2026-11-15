@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Court Steno Tools
 
-## Getting Started
+Two tools for a court stenographer, running entirely in the browser. No AI, no server-side processing: files never leave the computer.
 
-First, run the development server:
+- **TSN from Scriptix** – turns a Scriptix transcript of a hearing into a formatted Transcript of Stenographic Notes (.docx): case details, the part of the recording that belongs to the case, name corrections, speaker rows, Word export in the court's four-column layout.
+- **Gregg shorthand** – turns an English document (.docx, .txt or pasted text) into Gregg outlines laid out on steno-pad lines, as a PDF. Centennial by default; Simplified and Anniversary brief-form tables are partial.
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # production build (what Vercel runs)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Deploy by importing the repository in Vercel; no environment variables are needed.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How the Gregg outlines are made
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Each word is looked up in a pronunciation dictionary (`public/dict/cmu.txt`, from CMUdict, ~125,000 words). Words that are not in it are spelled out: capitalised words that look like Filipino or Spanish names are read as spelled (Lomongo, Unabia, Carcar); other words use a plain English letter-to-sound guess.
+2. The sounds become Gregg strokes by rule (`src/lib/gregg/rules.ts`): circles and hooks for vowels, the ten/den, tem/dem, men/mem, ent/end, def/dev blends, the -ing dot, the minor-vowel omission.
+3. Brief forms come from a per-series table in the same file. A word in the table overrides the rules.
+4. The strokes are drawn as one path (`src/lib/gregg/strokes.ts`) with Gregg's fixed slants and the circle-placement rules, then flowed onto ruled lines on screen and into the PDF (`pdf.ts`).
 
-## Learn More
+Outlines built this way follow the system's principles but will not always match the textbook form, especially for irregular words. In the app, a word's stroke code can be edited and the override is kept in the browser.
 
-To learn more about Next.js, take a look at the following resources:
+Stroke codes: `K G R L N M T D TH P B F V SH CH J S X NG NK Y`, blends `TN TM MN NT MT DF`, vowels `A E I O U OW OI YU`, `.` for the -ing dot, `-` for -ings, `h` for the h dot.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Layout
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/app` – routes (`/tsn`, `/gregg`) and global styles
+- `src/components/tsn` – the five-step TSN interface
+- `src/lib/tsn` – the TSN engine (`core.js`) and the Word template built from the court's reference TSN
+- `src/lib/gregg` – the shorthand engine
+- `scripts` – browser tests (`e2e.py`, Playwright) and rendering checks
