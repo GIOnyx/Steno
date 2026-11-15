@@ -23,6 +23,8 @@ export function GreggApp() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [filter, setFilter] = useState<"all" | "guess" | "brief">("guess");
+  const [showText, setShowText] = useState(false);
+  const [over, setOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const padRef = useRef<HTMLDivElement>(null);
   const [padW, setPadW] = useState(760);
@@ -43,6 +45,7 @@ export function GreggApp() {
     void ready; void dictErr;
     return renderText(text, { series: s.series, custom: s.custom[s.series], namesAsFilipino: s.names });
   }, [text, s.series, s.custom, s.names, ready, dictErr]);
+  const wordCount = paras.reduce((n, p) => n + p.words.length, 0);
   const colUnits = ((narrow ? padW : padW / 2) - 44) / UNIT;
   const lines: Line[] = useMemo(() => flow(paras, Math.max(8, colUnits)), [paras, colUnits]);
   const half = narrow ? lines.length : Math.ceil(lines.length / 2);
@@ -87,42 +90,51 @@ export function GreggApp() {
   return (
     <main className="main">
       <div className="gwrap">
-        <div className="pagehead"><h1>Gregg shorthand</h1><p className="lede">Drop a Word or text file, or paste text, and read it back in Gregg outlines on steno-pad lines. Outlines are built from each word’s sounds by rule, so they follow the system’s principles but will not always match the textbook form.</p></div>
+        <div className="pagehead"><h1>Gregg shorthand</h1><p className="lede">Drop a Word or text file, or paste text, and read it back in Gregg outlines on steno-pad lines. Outlines follow the system’s rules from each word’s sounds, so they will not always match the textbook form.</p></div>
 
-        <div className="gtop">
-          <div className="gsource">
-            <div className={"drop"} style={{ padding: "18px 20px", marginBottom: 12 }}
-              onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); }}>
-              <strong>{fileName || "Drop a .docx or .txt here"}</strong>
-              <span className="muted" style={{ fontSize: 13.5 }}>{fileName ? "Loaded. Edit the text below if you like." : "A TSN, an order, or any English document."}</span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" className="btn" onClick={() => fileRef.current?.click()}>Choose a file</button>
-                {s.text && <button type="button" className="btn ghost" onClick={() => { set("text", ""); setFileName(""); }}>Clear</button>}
-              </div>
-              <input ref={fileRef} type="file" accept=".docx,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ""; }} />
-            </div>
-            {fileErr && <p className="error" role="alert">{fileErr}</p>}
-            <label className="f"><span>Text</span>
-              <textarea value={s.text} placeholder={SAMPLE} onChange={(e) => { set("text", e.target.value); }} spellCheck={false} />
-              <small>{paras.reduce((n, p) => n + p.words.length, 0)} words. {!s.text && "Showing a sample until you add text."}</small>
-            </label>
+        {s.text ? (
+          <div className="gsrc" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); }}>
+            <strong>{fileName || "Pasted text"}</strong>
+            <span className="meta">{wordCount.toLocaleString()} words · {paras.length} paragraphs</span>
+            <span className="grow" />
+            <button type="button" className="btn small" onClick={() => setShowText((v) => !v)}>{showText ? "Hide the text" : "Edit the text"}</button>
+            <button type="button" className="btn small" onClick={() => fileRef.current?.click()}>Change file</button>
+            <button type="button" className="btn ghost small" onClick={() => { set("text", ""); setFileName(""); setShowText(false); }}>Clear</button>
           </div>
-          <aside className="gopts" aria-label="Options">
-            <label className="f"><span>Gregg series</span>
-              <select value={s.series} onChange={(e) => set("series", e.target.value as Series)}>{SERIES.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
-              <small>{SERIES.find((x) => x.id === s.series)!.note} {Object.keys(briefs).length} brief forms.</small>
-            </label>
-            <label className="f"><span>Page</span>
-              <select value={s.pageSize} onChange={(e) => set("pageSize", e.target.value as PdfOptions["pageSize"])}><option value="steno">Steno pad, 6 × 9 in</option><option value="letter">Letter</option><option value="a4">A4</option></select>
-            </label>
-            <label className="check" style={{ fontSize: 13.5 }}><input type="checkbox" checked={s.gloss} onChange={(e) => set("gloss", e.target.checked)} /><span>Print the English in small type under each line</span></label>
-            <label className="check" style={{ fontSize: 13.5 }}><input type="checkbox" checked={s.colour} onChange={(e) => set("colour", e.target.checked)} /><span>Colour outlines: blue for brief forms, brown for spelled-out words</span></label>
-            <label className="check" style={{ fontSize: 13.5, alignItems: "start" }}><input type="checkbox" checked={s.names} onChange={(e) => set("names", e.target.checked)} /><span>Read unknown capitalised words as Filipino or Spanish names (Lomongo, Unabia, Carcar)</span></label>
+        ) : (
+          <div className={"gsrc empty" + (over ? " over" : "")} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+            onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); }}>
+            <strong>Drop a .docx or .txt here</strong>
+            <span className="meta">A TSN, an order, or any English document. Or paste text below.</span>
+            <div style={{ display: "flex", gap: 8 }}><button type="button" className="btn primary" onClick={() => fileRef.current?.click()}>Choose a file</button><button type="button" className="btn" onClick={() => setShowText(true)}>Paste text</button></div>
+          </div>
+        )}
+        <input ref={fileRef} type="file" accept=".docx,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ""; }} />
+        {fileErr && <p className="error" role="alert">{fileErr}</p>}
+        {showText && (
+          <div className="gtext"><label className="f"><span>Text</span>
+            <textarea value={s.text} placeholder={SAMPLE} onChange={(e) => set("text", e.target.value)} spellCheck={false} autoFocus />
+            <small>{!s.text && "Showing a sample on the pad until you add text."}</small>
+          </label></div>
+        )}
+
+        <div className="gbar" role="toolbar" aria-label="Options">
+          <label className="f"><span>Series</span>
+            <select value={s.series} onChange={(e) => set("series", e.target.value as Series)}>{SERIES.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+          </label>
+          <label className="f"><span>Page</span>
+            <select value={s.pageSize} onChange={(e) => set("pageSize", e.target.value as PdfOptions["pageSize"])}><option value="steno">Steno pad 6 × 9 in</option><option value="letter">Letter</option><option value="a4">A4</option></select>
+          </label>
+          <label className="check"><input type="checkbox" checked={s.gloss} onChange={(e) => set("gloss", e.target.checked)} /><span>English under each line</span></label>
+          <label className="check"><input type="checkbox" checked={s.colour} onChange={(e) => set("colour", e.target.checked)} /><span>Colour by source</span></label>
+          <label className="check" title="Unknown capitalised words are read as spelled, the way Filipino and Spanish names are pronounced"><input type="checkbox" checked={s.names} onChange={(e) => set("names", e.target.checked)} /><span>Names read as Filipino</span></label>
+          <div className="right">
+            <span className="muted" style={{ fontSize: 12.5 }}>{dictErr ? "Dictionary unavailable; words spelled out" : ready ? "Dictionary loaded" : "Loading dictionary…"}</span>
             <button type="button" className="btn primary" onClick={savePdf} disabled={busy || !paras.length}>{busy ? "Making the PDF…" : "Save the PDF"}</button>
-            {msg && <p className="muted" style={{ fontSize: 13 }} role="status">{msg}</p>}
-            <p className="muted" style={{ fontSize: 12.5 }}>{dictErr ? dictErr : ready ? "Pronunciation dictionary loaded (125,000 words)." : "Loading the pronunciation dictionary (1.9 MB, once)…"}</p>
-          </aside>
+          </div>
         </div>
+        {msg && <p className="muted" style={{ fontSize: 13 }} role="status">{msg}</p>}
+        <p className="muted" style={{ fontSize: 13, margin: "4px 0 0" }}>{SERIES.find((x) => x.id === s.series)!.note} {Object.keys(briefs).length} brief forms in use.</p>
 
         <div className="pad" ref={padRef}>
           <div className="spiral" />
@@ -175,7 +187,7 @@ export function GreggApp() {
           <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Stroke codes: K G R L N M T D TH P B F V SH CH J S X NG NK Y, blends TN TM MN NT MT DF, blend TD (ted/ded/dit), vowels A (large circle) E (small circle) EF (flattened e, -ily) I O U OW OI YU, “.” for the -ing dot (also “a/an”), “~s” for the disjoined -ings, “~e” for the disjoined -ingly, “h” for the h dot. Example: <code>K O R T</code> is “court”.</p>
         </section>
       </div>
-      <div className="gfoot"><span className="hint">Nothing is uploaded. The PDF is made in this browser.</span><button type="button" className="btn primary" onClick={savePdf} disabled={busy}>Save the PDF</button></div>
+      <div className="gfoot"><span className="hint">Nothing is uploaded; the PDF is made in this browser.</span><button type="button" className="btn primary" onClick={savePdf} disabled={busy}>Save the PDF</button></div>
     </main>
   );
 }

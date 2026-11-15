@@ -34,13 +34,11 @@ export function StepCase({ ctx }: { ctx: Ctx }) {
     <>
       <div className="pagehead"><h1>Case details</h1><p className="lede">Copy these from the court calendar. They fill the cover page, the header on every page and the list of names to look for in the recording.</p></div>
 
-      <section className="group">
-        <header><h2>Paste from the calendar</h2><p>Optional. If you have the calendar entry as text, paste it here and the form fills itself in.</p></header>
-        <div className="fields">
-          <label className="f"><span>Calendar entry</span>
-            <textarea rows={5} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={"Civil Case no/s. 958 and 964\nCase Title: … -versus- …\nFOR: …\nPlaintiff’s Counsel: …\nDefendant’s Counsel: …\nStatus: …"} />
-          </label>
-          <div className="f"><button type="button" className="btn" style={{ alignSelf: "start" }} onClick={fill}>Fill in the form</button></div>
+      <section className="quick" aria-label="Quick fill">
+        <header><h2>Quick fill from the calendar</h2><p>Optional. Paste the calendar entry as text and the form fills itself in; check it afterwards.</p></header>
+        <div>
+          <textarea rows={4} value={paste} aria-label="Calendar entry" onChange={(e) => setPaste(e.target.value)} placeholder={"Civil Case no/s. 958 and 964\nCase Title: … -versus- …\nFOR: …\nPlaintiff’s Counsel: …\nDefendant’s Counsel: …\nStatus: …"} />
+          <div className="row"><button type="button" className="btn" onClick={fill} disabled={!paste.trim()}>Fill in the form</button>{paste.trim() && <button type="button" className="btn ghost small" onClick={() => setPaste("")}>Clear</button>}</div>
         </div>
       </section>
 
