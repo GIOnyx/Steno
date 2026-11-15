@@ -13,7 +13,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(); ctx = b.new_context(viewport={'width':1360,'height':900}, accept_downloads=True); pg = ctx.new_page()
     errs=[]; pg.on('pageerror', lambda e: errs.append('PAGEERROR '+str(e))); pg.on('console', lambda m: errs.append('CONSOLE '+m.text) if m.type=='error' else None)
     pg.goto(base+'/tsn'); pg.wait_for_selector('#paste, textarea')
-    pg.fill('textarea[placeholder^="Civil Case"]', SUMMARY); pg.click('text=Fill in the form')
+    pg.fill('textarea[placeholder^="Civil Case"]', SUMMARY); pg.click('button:has-text("Fill in the form")')
     pg.fill('input[type=date]', '2026-10-13'); pg.fill('input[placeholder="Jessica M. Lomongo"]', 'Jessica M. Lomongo')
     pg.screenshot(path=OUT+'tsn-1.png', full_page=True)
     pg.click('.footbar >> text=Continue'); pg.set_input_files('input[type=file][accept=".docx,.txt"]', A+'samples/rec.docx'); pg.wait_for_selector('.blk.edge-s')
@@ -23,7 +23,7 @@ with sync_playwright() as p:
     for name in ['Crescento','Allo','Alon','Garos','Lumomo']:
         pg.locator('tr', has=pg.locator('td.heard', has_text=name)).first.locator('input[type=checkbox]').check()
     for f,t in [('Jonathan Jones','Nathaniel Clarus'),('Dr. Nialo','Atty. Alo')]:
-        pg.fill('input[placeholder="Heard as"]', f); pg.fill('input[placeholder="Change to"]', t); pg.click('text=Add replacement')
+        pg.fill('input[placeholder="Heard as"]', f); pg.fill('input[placeholder="Change to"]', t); pg.click('button:has-text("Add replacement")')
     pg.screenshot(path=OUT+'tsn-3.png', full_page=True)
     pg.click('.footbar >> text=Continue'); pg.wait_for_selector('.sheet .row')
     print('rows:', pg.locator('.sheet .row').count(), '|', pg.inner_text('.badge'))
@@ -37,11 +37,11 @@ with sync_playwright() as p:
     pg.locator('.row .lab').nth(5).click(); pg.wait_for_selector('.menu'); pg.screenshot(path=OUT+'tsn-4.png'); pg.keyboard.press('Escape')
     pg.fill('input[placeholder="PROS. EJEM"]', 'pros. ejem'); pg.click('aside button.btn.small:has-text("Add")'); print('extra:', pg.locator('.keys button', has_text='PROS. EJEM').count())
     pg.click('.footbar >> text=Continue'); pg.screenshot(path=OUT+'tsn-5.png')
-    with pg.expect_download() as d: pg.click('text=Save the Word file')
+    with pg.expect_download() as d: pg.click('button:has-text("Save the Word file")')
     dl=d.value; os.makedirs(A+'out',exist_ok=True); path=A+'out/'+dl.suggested_filename; dl.save_as(path); print('docx:', dl.suggested_filename, os.path.getsize(path))
     pg.wait_for_timeout(900); pg.reload(); pg.wait_for_selector('text=Continue that transcript'); print('resume offered')
     # Gregg tab
-    pg.click('text=Gregg shorthand'); pg.wait_for_selector('.pad'); pg.wait_for_selector('text=Pronunciation dictionary loaded', timeout=30000)
+    pg.click('nav >> text=Gregg shorthand'); pg.wait_for_selector('.pad'); pg.wait_for_selector('text=Pronunciation dictionary loaded', timeout=30000)
     pg.set_input_files('.gsource input[type=file]', A+'samples/10.14.26.docx'); pg.wait_for_selector('text=Loaded.')
     pg.wait_for_timeout(800)
     print('gregg words:', pg.inner_text('.gsource small'), '| legend:', pg.inner_text('.legend').replace('\n',' '))

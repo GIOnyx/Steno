@@ -6,6 +6,7 @@ import { flow, type Line } from "./layout";
 export type PdfOptions = {
   pageSize: "steno" | "letter" | "a4";
   gloss: boolean;            // print the English under each line
+  colour?: boolean;          // colour outlines by how they were made (brief form, spelled out)
   title?: string;
   series: string;
   unit?: number;             // points per stroke unit
@@ -64,7 +65,7 @@ export async function buildPdf(paras: Para[], opt: PdfOptions): Promise<Uint8Arr
         continue;
       }
       const o = w.outline;
-      const color = w.source === "brief" || w.source === "custom" ? rgb(0.09, 0.19, 0.56) : w.source === "guess" || w.source === "filipino" ? rgb(0.45, 0.3, 0.05) : ink;
+      const color = !opt.colour ? ink : w.source === "brief" || w.source === "custom" ? rgb(0.09, 0.19, 0.56) : w.source === "guess" || w.source === "filipino" ? rgb(0.45, 0.3, 0.05) : ink;
       // drawSvgPath takes the path's own coordinates with y down, anchored at (x, y) = SVG origin
       const top = baseY + (o.minY + o.h) * unit; // rest the outline on the writing line
       page.drawSvgPath(o.d, { x: x - o.minX * unit, y: top, scale: unit, borderColor: color, borderWidth: 0.95 / unit, borderLineCap: 1 as never });
@@ -78,9 +79,6 @@ export async function buildPdf(paras: Para[], opt: PdfOptions): Promise<Uint8Arr
       page.drawText(g, { x: x0, y: baseY - 7, size: 5.5, font, color: grey });
     }
   };
-  lines.forEach((ln, i) => {
-    if (ln.paraStart && i > 0) next(); // blank-ish line between paragraphs? keep compact: just a new line
-    drawLine(ln); next();
-  });
+  lines.forEach((ln) => { drawLine(ln); next(); });
   return pdf.save();
 }

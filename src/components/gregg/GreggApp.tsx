@@ -7,8 +7,8 @@ import { flow, type Line } from "@/lib/gregg/layout";
 import { buildPdf, type PdfOptions } from "@/lib/gregg/pdf";
 
 const KEY = "stenoTools.gregg.v1";
-type Saved = { series: Series; gloss: boolean; pageSize: PdfOptions["pageSize"]; names: boolean; custom: Record<Series, Record<string, string>>; text: string };
-const DEFAULT: Saved = { series: "centennial", gloss: true, pageSize: "steno", names: true, custom: { centennial: {}, simplified: {}, anniversary: {} }, text: "" };
+type Saved = { series: Series; gloss: boolean; colour: boolean; pageSize: PdfOptions["pageSize"]; names: boolean; custom: Record<Series, Record<string, string>>; text: string };
+const DEFAULT: Saved = { series: "centennial", gloss: true, colour: true, pageSize: "steno", names: true, custom: { centennial: {}, simplified: {}, anniversary: {} }, text: "" };
 const SAMPLE = "When called today for the continuation of trial, Atty. Nathaniel Clarus appeared as plaintiffs’ counsel in Civil Case No. 958.\nCalled to the witness stand is the fourth witness, Jessica M. Lomongo, whose testimony was completed today.";
 
 const UNIT = 11;            // px per stroke unit on screen
@@ -66,7 +66,7 @@ export function GreggApp() {
   const savePdf = async () => {
     setBusy(true); setMsg("");
     try {
-      const bytes = await buildPdf(paras, { pageSize: s.pageSize, gloss: s.gloss, series: SERIES.find((x) => x.id === s.series)!.name, title: fileName.replace(/\.[^.]+$/, "") });
+      const bytes = await buildPdf(paras, { pageSize: s.pageSize, gloss: s.gloss, colour: s.colour, series: SERIES.find((x) => x.id === s.series)!.name, title: fileName.replace(/\.[^.]+$/, "") });
       const name = (fileName ? fileName.replace(/\.[^.]+$/, "") : "shorthand") + " - Gregg.pdf";
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
       const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -116,6 +116,7 @@ export function GreggApp() {
               <select value={s.pageSize} onChange={(e) => set("pageSize", e.target.value as PdfOptions["pageSize"])}><option value="steno">Steno pad, 6 × 9 in</option><option value="letter">Letter</option><option value="a4">A4</option></select>
             </label>
             <label className="check" style={{ fontSize: 13.5 }}><input type="checkbox" checked={s.gloss} onChange={(e) => set("gloss", e.target.checked)} /><span>Print the English in small type under each line</span></label>
+            <label className="check" style={{ fontSize: 13.5 }}><input type="checkbox" checked={s.colour} onChange={(e) => set("colour", e.target.checked)} /><span>Colour outlines: blue for brief forms, brown for spelled-out words</span></label>
             <label className="check" style={{ fontSize: 13.5, alignItems: "start" }}><input type="checkbox" checked={s.names} onChange={(e) => set("names", e.target.checked)} /><span>Read unknown capitalised words as Filipino or Spanish names (Lomongo, Unabia, Carcar)</span></label>
             <button type="button" className="btn primary" onClick={savePdf} disabled={busy || !paras.length}>{busy ? "Making the PDF…" : "Save the PDF"}</button>
             {msg && <p className="muted" style={{ fontSize: 13 }} role="status">{msg}</p>}
@@ -129,7 +130,7 @@ export function GreggApp() {
           <div className="padcols">
             {(narrow ? [lines] : [lines.slice(0, half), lines.slice(half)]).map((colLines, ci) => (
               <div key={ci} style={{ padding: ci ? "0 20px 0 28px" : "0 28px 0 20px" }}>
-                {colLines.map((ln, li) => <PadLine key={li} line={ln} first={li === 0} gloss={s.gloss} />)}
+                {colLines.map((ln, li) => <PadLine key={li} line={ln} first={li === 0} gloss={s.gloss} colour={s.colour} />)}
                 {!narrow && ci === 1 && colLines.length < half && Array.from({ length: half - colLines.length }).map((_, i) => <div key={"e" + i} className="padline" />)}
               </div>
             ))}
@@ -184,7 +185,7 @@ function sourceText(s: Source) {
   return s === "dict" ? "From its sounds" : s === "brief" ? "Brief form" : s === "custom" ? "Your override" : s === "filipino" ? "Spelled out as a Filipino/Spanish name" : s === "guess" ? "Spelled out (not in the dictionary)" : "Longhand";
 }
 
-function PadLine({ line, first, gloss }: { line: Line; first: boolean; gloss: boolean }) {
+function PadLine({ line, first, gloss, colour }: { line: Line; first: boolean; gloss: boolean; colour: boolean }) {
   const base = gloss ? LINE_H - 14 : LINE_H - 6; // the writing line; outlines rest on it
   return (
     <div className={"padline" + (first ? " first" : "")} style={{ height: LINE_H }}>
@@ -193,7 +194,7 @@ function PadLine({ line, first, gloss }: { line: Line; first: boolean; gloss: bo
           const w = it.word, x = it.x * UNIT;
           if (!w.outline) return <text key={i} x={x} y={base} fontSize={11} fill="#1A2233" fontFamily="var(--tsn)">{w.text}</text>;
           const o = w.outline;
-          const cls = "outline" + (w.source === "brief" || w.source === "custom" ? " brief" : w.source === "guess" || w.source === "filipino" ? " guess" : "");
+          const cls = "outline" + (!colour ? "" : w.source === "brief" || w.source === "custom" ? " brief" : w.source === "guess" || w.source === "filipino" ? " guess" : "");
           return (
             <g key={i} className={cls} transform={`translate(${x - o.minX * UNIT} ${base - (o.minY + o.h) * UNIT}) scale(${UNIT})`} strokeWidth={1.6 / UNIT}>
               <path d={o.d} />
