@@ -1,3 +1,2 @@
-import { outlineFor } from "../src/lib/gregg/strokes.ts";
-import { codeToTokens } from "../src/lib/gregg/rules.ts";
-for (const code of ["N A M", "T A N", "K E P"]) { const o = outlineFor(codeToTokens(code)); console.log(code, o.d, JSON.stringify([o.minX,o.minY,o.w,o.h])); }
+import * as R from "../src/lib/gregg/rules.ts";
+for (const [w, s] of [["nation", "nAS0n"], ["nations", "nAS0nz"], ["prosecution", "pras0kyUS0n"], ["some", "s^m"], ["done", "d^n"], ["moon", "mUn"], ["unless", "0nles"], ["under","^nd9"], ["summer","s^m9"], ["come","k^m"], ["but","b^t"]]) console.log(w.padEnd(12), R.tokensToCode(R.soundsToTokens(s.split(""), "centennial", w)));

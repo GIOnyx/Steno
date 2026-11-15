@@ -11,7 +11,7 @@ import type { Token } from "./strokes";
 // vowels
 // Eh = short e / short i (small circle, takes part in the men/ten blends); E = long e (small circle)
 const V: Record<string, string> = {
-  a: "A", "@": "A", "^": "U", "0": "schwa", c: "O", W: "OW", I: "I", e: "Eh", R: "ER", "9": "er", A: "A", i: "Eh", "1": "ih", E: "E", O: "O", Y: "OI", u: "U", U: "U",
+  a: "A", "@": "A", "^": "Uh", "0": "schwa", c: "O", W: "OW", I: "I", e: "Eh", R: "ER", "9": "er", A: "A", i: "Eh", "1": "ih", E: "E", O: "O", Y: "OI", u: "U", U: "U",
 };
 // consonants
 const CONS: Record<string, string> = {
@@ -21,7 +21,7 @@ export const isVowelCode = (c: string) => c in V;
 
 export type Series = "centennial" | "simplified" | "anniversary";
 export const SERIES: { id: Series; name: string; note: string }[] = [
-  { id: "centennial", name: "Centennial (1988)", note: "The series of Gregg Shorthand College Book 2, Centennial Edition." },
+  { id: "centennial", name: "Centennial (1988)", note: "The series of Gregg Shorthand College Book 2, Centennial Edition. All 139 brief forms (162 words)." },
   { id: "simplified", name: "Simplified (1949)", note: "Centennial table plus the Simplified extras. Partial." },
   { id: "anniversary", name: "Anniversary (1929)", note: "Simplified table plus a few Anniversary forms. Partial." },
 ];
@@ -91,8 +91,7 @@ export function englishToSounds(word: string): string[] {
 }
 
 /* ---------------- sounds -> tokens ---------------- */
-const SHORT = new Set(["Eh", "schwa", "ih", "er", "U"]);
-const SHORT_V = new Set(["Eh", "schwa", "ih", "er", "U", "E"]);
+const SHORT_V = new Set(["Eh", "schwa", "ih", "er", "Uh", "E"]);
 const ABBREV: Record<string, string> = {
   atty: "attorney", attys: "attorneys", hon: "honorable", mr: "mister", mrs: "missus", ms: "miss", dr: "doctor", sps: "spouses", hrs: "heirs",
   no: "number", nos: "numbers", vs: "versus", exh: "exhibit", brgy: "barangay", pros: "prosecutor", engr: "engineer", jr: "junior", sr: "senior",
@@ -101,60 +100,91 @@ const ABBREV: Record<string, string> = {
 export const ABBREVIATIONS = ABBREV;
 
 export function soundsToTokens(sounds: string[], series: Series, spelling = ""): Token[] {
-  // 1. decode into a list of {type:'c'|'v', code}
   type P = { c?: string; v?: string };
-  const ph: P[] = sounds.map((s) => (s in CONS ? { c: CONS[s] } : { v: V[s] || "A" }));
-  // word endings (Centennial Lesson 1): -ing dot, -ings disjoined left s, -ly circle, -ily flattened circle, -ingly disjoined circle
+  const ph: P[] = sounds.map((x) => (x in CONS ? { c: CONS[x] } : { v: V[x] || "A" }));
+  let sp = spelling.toLowerCase();
+  const tail = (n: number) => ph.slice(-n).map((q) => q.c || q.v).join(" ");
+  const head = (n: number) => ph.slice(0, n).map((q) => q.c || q.v).join(" ");
+  const isShort = (v?: string) => !!v && SHORT_V.has(v);
+
+  /* ---- word endings (Diamond Jubilee / Centennial theory). Applied from the end inwards. */
   const ending: Token[] = [];
-  const tail = (n: number) => ph.slice(-n).map((p) => p.c || p.v).join(" ");
-  const sp = spelling.toLowerCase();
-  const isLE = (t: string) => t === "L E" || t === "L Eh";
-  if (/ingly$/.test(sp) && ph.length > 4 && /^(ih|Eh) NG L (E|Eh)$/.test(tail(4))) { ph.splice(-4); ending.push({ k: "dis", m: "e" }); }
-  else if (/[^aeiou]ily$/.test(sp) && ph.length > 3 && isLE(tail(2))) { ph.splice(-2); if (ph.length > 1 && ph[ph.length - 1].v && SHORT_V.has(ph[ph.length - 1].v!)) ph.splice(-1); ending.push({ k: "v", v: "EF" }); }
-  else if (/ly$/.test(sp) && ph.length > 2 && isLE(tail(2))) { ph.splice(-2); ending.push({ k: "v", v: "E" }); }
-  else if (/ings$/.test(sp) && ph.length > 4 && /^(ih|Eh) NG S$/.test(tail(3))) { ph.splice(-3); ending.push({ k: "dis", m: "s" }); }
-  else if (/ing$/.test(sp) && ph.length > 3 && /^(ih|Eh) NG$/.test(tail(2))) { ph.splice(-2); ending.push({ k: "dot" }); }
-  // 2. vowel omission: schwa and unstressed ih/er between consonants are left out (Gregg minor-vowel rule)
+  const put = (...t: Token[]) => ending.unshift(...t);
+  for (let pass = 0; pass < 3; pass++) {
+    const t2 = tail(2), t3 = tail(3), t4 = tail(4);
+    if (/ingly$/.test(sp) && ph.length > 4 && /^(ih|Eh) NG L (E|Eh)$/.test(t4)) { ph.splice(-4); sp = sp.slice(0, -5); put({ k: "dis", m: "e" }); }
+    else if (/[^aeiou]ily$/.test(sp) && ph.length > 3 && /^L (E|Eh)$/.test(t2)) { ph.splice(-2); if (ph.length > 1 && isShort(ph[ph.length - 1].v)) ph.splice(-1); sp = sp.slice(0, -3); put({ k: "v", v: "EF" }); }
+    else if (/ly$/.test(sp) && ph.length > 2 && /^L (E|Eh)$/.test(t2)) { ph.splice(-2); sp = sp.slice(0, -2); put({ k: "v", v: "E" }); }
+    else if (/ings$/.test(sp) && ph.length > 4 && /^(ih|Eh) NG S$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -4); put({ k: "dis", m: "s" }); }
+    else if (/ing$/.test(sp) && ph.length > 3 && /^(ih|Eh) NG$/.test(t2)) { ph.splice(-2); sp = sp.slice(0, -3); put({ k: "dot" }); }
+    else if (/[st]ions?$/.test(sp) && ph.length > 3 && (/^SH (schwa|Eh|ih) N$/.test(t3) || /^SH (schwa|Eh|ih) N S$/.test(tail(4)))) { const pl = /s$/.test(sp); ph.splice(pl ? -4 : -3); sp = sp.replace(/[st]ions?$/, ""); put({ k: "c", s: "SH" }, ...(pl ? [{ k: "c", s: "S" } as Token] : [])); }
+    else if (/[st]ion$/.test(sp) && ph.length > 2 && /^SH N$/.test(t2)) { ph.splice(-2); sp = sp.replace(/[st]ion$/, ""); put({ k: "c", s: "SH" }); }
+    else if (/ful$/.test(sp) && ph.length > 3 && /^F (schwa|U|Uh|ih|Eh) L$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -3); put({ k: "c", s: "F" }); }
+    else if (/ble$/.test(sp) && ph.length > 3 && /^B (schwa|U|Uh|ih|Eh) L$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -3); put({ k: "c", s: "B" }); }
+    else if (/ther$/.test(sp) && ph.length > 2 && /^TH (er|ER)$/.test(t2)) { ph.splice(-2); sp = sp.slice(0, -4); put({ k: "c", s: "TH" }); }
+    else if (/ship$/.test(sp) && ph.length > 3 && /^SH (ih|Eh) P$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -4); put({ k: "c", s: "SH" }); }
+    else if (/ward$/.test(sp) && ph.length > 3 && /^W (er|ER|O) D$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -4); put({ k: "c", s: "D" }); }
+    else if (/hood$/.test(sp) && ph.length > 3 && /^H U D$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -4); put({ k: "c", s: "D" }); }
+    else if (/selves$/.test(sp) && ph.length > 5 && /^S (Eh|E) L V S$/.test(tail(5))) { ph.splice(-5); sp = sp.slice(0, -6); put({ k: "c", s: "S" }, { k: "c", s: "S" }); }
+    else if (/self$/.test(sp) && ph.length > 4 && /^S (Eh|E) L F$/.test(t4)) { ph.splice(-4); sp = sp.slice(0, -4); put({ k: "c", s: "S" }); }
+    else if (/[ct]ial$/.test(sp) && ph.length > 3 && /^SH (schwa|U|Uh|ih|Eh) L$/.test(t3)) { ph.splice(-3); sp = sp.replace(/[ct]ial$/, ""); put({ k: "c", s: "SH" }); }
+    else if (/(lity|rity)$/.test(sp) && ph.length > 4 && /^(L|R) (ih|Eh|schwa) T (E|Eh)$/.test(t4)) { const c = ph[ph.length - 4].c!; ph.splice(-4); sp = sp.slice(0, -4); put({ k: "c", s: c }); }
+    else if (/(cal|cle)$/.test(sp) && ph.length > 3 && /^K (schwa|U|Uh|ih|Eh) L$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -3); put({ k: "c", s: "K" }); }
+    else if (/ual$/.test(sp) && ph.length > 3 && /^(U|YU|W) (schwa|U|Uh) L$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -3); put({ k: "c", s: "L" }); }
+    else break;
+  }
+
+  /* ---- word beginnings */
+  const h3 = head(3), h2 = head(2);
+  if (/^co[nm]/.test(sp) && /^K (schwa|U|Uh|O|A) (N|M)$/.test(h3) && ph[3] && ph[3].c) ph.splice(1, 2);                 // con-, com- = k
+  else if (/^e[xg]/.test(sp) && /^(Eh|E|ih) (K|G) S$/.test(h3)) ph.splice(1, 1);                                     // ex- = e s
+  else if (/^(in|en|un|im|em)/.test(sp) && /^(Eh|ih|U|Uh|schwa|E) (N|M) (T|D)$/.test(h3)) ph.splice(0, 1);             // inter-, ent-, ind- = nt blend
+  else if (/^(in|en|un|im|em)/.test(sp) && /^(Eh|ih|U|Uh|schwa|E) (N|M)$/.test(h2) && ph[2] && ph[2].c) ph.splice(0, 1); // in-, en-, un- = n
+  else if (/^al[^aeiouy]/.test(sp) && /^(O|A) L$/.test(h2) && ph[2] && ph[2].c) ph.splice(0, 2, { v: "O" });        // al- = o
+  else if (/^(be|de|re|pro|per|pur|for|fur|mis|dis|des)[^aeiouy]/.test(sp) && ph[0] && ph[0].c && ph[1] && ph[1].v && isShort(ph[1].v) && ph[2] && ph[2].c) ph.splice(1, 1); // prefix vowel omitted
+
+  /* ---- vowel omission: unstressed minor vowels between consonants; short u before n and m */
   const kept: P[] = [];
   for (let i = 0; i < ph.length; i++) {
     const p = ph[i];
     if (p.v === "schwa" || p.v === "ih" || p.v === "er") {
       const prev = kept[kept.length - 1], next = ph[i + 1];
       const between = prev && prev.c && next && next.c;
-      if (p.v === "er") { if (!between) kept.push({ v: "E" }); kept.push({ c: "R" }); continue; }
+      if (p.v === "er") { if (!prev) kept.push({ v: "Eh" }); kept.push({ c: "R" }); continue; } // letter, summer: r alone
       if (between) continue;
-      kept.push({ v: p.v === "schwa" ? (i === ph.length - 1 ? "A" : "U") : "E" });
+      kept.push({ v: p.v === "schwa" ? (i === ph.length - 1 ? "A" : "U") : "Eh" });
       continue;
     }
-    if (p.v === "ER") { kept.push({ v: "E" }, { c: "R" }); continue; }
+    if (p.v === "ER") { kept.push({ v: "Eh" }, { c: "R" }); continue; }
+    if (p.v === "Uh" && kept.length && kept[kept.length - 1].c && ph[i + 1] && (ph[i + 1].c === "N" || ph[i + 1].c === "M")) continue; // son, come, summer
     kept.push(p);
   }
-  // 3. blends and special consonants
+
+  /* ---- blends and special consonants */
   const out: Token[] = [];
-  const useBlends = true;
   for (let i = 0; i < kept.length; i++) {
     const p = kept[i], n = kept[i + 1], n2 = kept[i + 2];
-    if (p.v) { out.push({ k: "v", v: (p.v === "Eh" ? "E" : p.v) as never }); continue; }
+    if (p.v) { out.push({ k: "v", v: (p.v === "Eh" ? "E" : p.v === "Uh" ? "U" : p.v) as never }); continue; }
     const c = p.c!;
     if (c === "H") { out.push({ k: "h" }); continue; }
-    if (c === "W") { out.push({ k: "v", v: "U" }); continue; }          // w = oo hook
+    if (c === "W") { out.push({ k: "v", v: "U" }); continue; }
     if (c === "Y") { if (n && n.v === "U") { out.push({ k: "v", v: "YU" }); i++; } else out.push({ k: "c", s: "Y" }); continue; }
-    if (useBlends) {
-      // ted / ded / dit: t or d, an optional short vowel, then t or d
-      if ((c === "T" || c === "D") && n && n.v && SHORT.has(n.v) && n2 && (n2.c === "T" || n2.c === "D")) { out.push({ k: "c", s: "TD" }); i += 2; continue; }
-      if ((c === "T" || c === "D") && n && (n.c === "T" || n.c === "D")) { out.push({ k: "c", s: "TD" }); i += 1; continue; }
-      if ((c === "T" || c === "D") && n && n.v && SHORT.has(n.v) && n2 && n2.c === "N" && series !== "anniversary") { out.push({ k: "c", s: "TN" }); i += 2; continue; }
-      if ((c === "T" || c === "D") && n && n.c === "N") { out.push({ k: "c", s: "TN" }); i += 1; continue; }
-      if ((c === "T" || c === "D") && n && n.v && SHORT.has(n.v) && n2 && n2.c === "M") { out.push({ k: "c", s: "TM" }); i += 2; continue; }
-      if (c === "M" && n && n.v && SHORT.has(n.v) && n2 && (n2.c === "N" || n2.c === "M")) { out.push({ k: "c", s: "MN" }); i += 2; continue; }
-      if (c === "N" && n && (n.c === "T" || n.c === "D")) { out.push({ k: "c", s: "NT" }); i += 1; continue; }
-      if (c === "M" && n && (n.c === "T" || n.c === "D")) { out.push({ k: "c", s: "MT" }); i += 1; continue; }
-      if (c === "D" && n && n.v && SHORT.has(n.v) && n2 && (n2.c === "F" || n2.c === "V")) { out.push({ k: "c", s: "DF" }); i += 2; continue; }
-      if (c === "T" && n && n.v === "Eh" && n2 && n2.c === "V" && i >= kept.length - 3) { out.push({ k: "c", s: "DF" }); i += 2; continue; } // -tive
-      if (c === "NG" && n && n.c === "K") { out.push({ k: "c", s: "NK" }); i += 1; continue; }
-    }
+    const TD = (x?: P) => !!x && (x.c === "T" || x.c === "D");
+    if (TD(p) && n && isShort(n.v) && TD(n2)) { out.push({ k: "c", s: "TD" }); i += 2; continue; }
+    if (TD(p) && TD(n)) { out.push({ k: "c", s: "TD" }); i += 1; continue; }
+    if (TD(p) && n && isShort(n.v) && n2 && n2.c === "N") { out.push({ k: "c", s: "TN" }); i += 2; continue; }
+    if (TD(p) && n && n.c === "N") { out.push({ k: "c", s: "TN" }); i += 1; continue; }
+    if (TD(p) && n && isShort(n.v) && n2 && n2.c === "M") { out.push({ k: "c", s: "TM" }); i += 2; continue; }
+    if (TD(p) && n && n.c === "M") { out.push({ k: "c", s: "TM" }); i += 1; continue; }
+    if (c === "M" && n && isShort(n.v) && n2 && (n2.c === "N" || n2.c === "M")) { out.push({ k: "c", s: "MN" }); i += 2; continue; }
+    if (c === "M" && n && (n.c === "N" || n.c === "M")) { out.push({ k: "c", s: "MN" }); i += 1; continue; }
+    if (c === "N" && TD(n)) { out.push({ k: "c", s: "NT" }); i += 1; continue; }
+    if (c === "M" && TD(n)) { out.push({ k: "c", s: "MT" }); i += 1; continue; }
+    if (c === "D" && n && isShort(n.v) && n2 && (n2.c === "F" || n2.c === "V")) { out.push({ k: "c", s: "DF" }); i += 2; continue; }
+    if (c === "D" && n && (n.c === "F" || n.c === "V")) { out.push({ k: "c", s: "DF" }); i += 1; continue; }
+    if (c === "T" && n && n.v === "Eh" && n2 && n2.c === "V" && i >= kept.length - 3) { out.push({ k: "c", s: "DF" }); i += 2; continue; } // -tive
+    if (c === "NG" && n && n.c === "K") { out.push({ k: "c", s: "NK" }); i += 1; continue; }
     if (c === "S") {
-      // left s joins inside k, g, f, v and before/after circles; the comma s goes with p, b, r, l and straight strokes
       const nb = (n && n.c) || (kept[i - 1] && kept[i - 1].c) || "";
       out.push({ k: "c", s: ["K", "G", "F", "V", "SH", "CH", "J"].includes(nb) ? "SL" : "S" });
       continue;
@@ -162,37 +192,42 @@ export function soundsToTokens(sounds: string[], series: Series, spelling = ""):
     out.push({ k: "c", s: c });
   }
   out.push(...ending);
+  void series;
   return out;
 }
 
 /* ---------------- brief forms ---------------- */
 // Written in a tiny code: consonant stroke keys and vowels (A E I O U OW OI YU), "." = -ing dot, "-" = dash, "h" = h dot.
+// The 139 Centennial brief forms (162 words), as listed at greggshorthand.github.io/cenbfs.html, in this file's stroke codes.
 const CENTENNIAL: Record<string, string> = {
-  a: ".", an: ".", the: "TH", acknowledge: "A K", acknowledgment: "A K M", advantage: "A V J", disadvantage: "D S A V J",
-  advertise: "A V R T S", advertisement: "A V R T S M", afternoon: "A F TN", anniversary: "A N V R S", appropriate: "A P R",
-  appropriately: "A P R E", been: "B N", able: "A B L", might: "M I T", of: "O", and: "NT", to: "T", in: "N", not: "N", is: "S", his: "S", it: "T", at: "T",
-  for: "F", you: "U", your: "U", i: "I", are: "R", our: "R", hour: "R", will: "L", well: "L", can: "K", good: "G",
-  be: "B", by: "B", but: "B", have: "V", with: "TH", which: "CH", was: "U S", one: "U N", won: "U N", this: "TH S",
-  there: "TH R", their: "TH R", they: "TH A", that: "TH A T", them: "TH M", then: "TH N", than: "TH N", think: "TH .", thing: "TH .",
-  those: "TH O S", through: "TH R U", throughout: "TH R U T", about: "A B", after: "A F", am: "M", more: "M", any: "N E",
-  before: "B F", between: "B T N", business: "B S", could: "K D", during: "D U", ever: "E V", every: "E V", from: "F R",
-  general: "J N", gentlemen: "J", glad: "G L", govern: "G V", government: "G V MT", great: "G R", how: "OW", out: "OW T",
-  importance: "M P", important: "M P", manufacture: "M F", morning: "M R", mr: "M R", mrs: "M R S", never: "N V",
-  object: "O B", opinion: "O P N", order: "O D", organize: "O G", over: "O V", part: "P T", particular: "P T K",
-  present: "P R", probable: "P R B", public: "P B", publish: "P B", purpose: "P R P", question: "K W", quantity: "K T",
-  recognize: "R K", regard: "R G", regular: "R G L", request: "R K W", responsible: "R S P", satisfy: "S A T", satisfactory: "S A T",
-  several: "S V", shall: "SH", ship: "SH", short: "SH T", should: "SH D", soon: "S N", speak: "S P", state: "S T",
-  street: "S T R", subject: "S B", success: "S K", suggest: "S J", thank: "TH K", time: "T M", under: "N D", upon: "P N",
-  usual: "U SH", value: "V L", very: "V E", want: "U NT", where: "U A R", wish: "U SH", why: "I", work: "R K", world: "R L D",
-  would: "U D", year: "E R", yesterday: "E S T", yet: "E T", young: "U NG", when: "U N", where_: "", what: "U T", were: "U R",
-  she: "SH", he: "E", we: "U E", me: "M E", my: "M I", us: "U S", so: "S O", no: "N O", do: "D U", go: "G O", if: "E F",
-  or: "O R", as: "A S", has: "A S", had: "A D", did: "D D", does: "D S", done: "D N", get: "G T", give: "G V",
-  know: "N O", let: "L T", like: "L I K", made: "M A D", make: "M A K", many: "M N E", may: "M A", much: "M CH", must: "M S T",
-  other: "O TH R", own: "O N", say: "S A", see: "S E", still: "S T L", such: "S CH", take: "T A K", tell: "T L", these: "TH E S",
-  use: "YU S", way: "U A", who: "H U", whom: "H U M", why_: "", yes: "E S", honor: "O N R", honorable: "O N R B", court: "K O R T",
-  witness: "U T N S", counsel: "K N S L", exhibit: "K S B", objection: "O B J", sustained: "S S T N D", overruled: "O V R L D",
-  plaintiff: "P L N T F", defendant: "D F N T", accused: "K YU S D", prosecution: "P R S K SH", testimony: "T S T M N E",
-  attorney: "A T R N E", evidence: "E V D N S", hearing: "H E R .", case: "K A S", madam: "M D M", sir: "S R", correct: "K R K T",
+  a: ".", an: ".", about: "A B", acknowledge: "A K", advantage: "A V", advertise: "A V T I S", after: "A F T", am: "M", and: "NT",
+  anniversary: "A N E V", any: "N E", appropriate: "A P R O P", are: "R", our: "R", hour: "R", at: "T", it: "T", be: "B", by: "B",
+  between: "B TN", business: "B S", but: "B T", can: "K", character: "K A K", circular: "S E R K", circumstance: "S TN S",
+  communicate: "K K A T", company: "K P", convenience: "K V E N", convenient: "K V E N", correspond: "K R E S", correspondence: "K R E S",
+  could: "K D", difficult: "DF K", direct: "D R K", during: "D R", dr: "D R", doctor: "D R", electric: "E L", enclose: "N K",
+  envelope: "N V L", equip: "E K P", equivalent: "E K E V", ever: "E V", every: "E V", executive: "E S E K V", experience: "E S P",
+  for: "F", from: "F M", general: "J E N", gentlemen: "J MN", glad: "G L", good: "G", govern: "G V", have: "V", his: "S", is: "S",
+  however: "A U V", i: "A", idea: "A D E", immediate: "E M E", important: "M P", importance: "M P", in: "N", not: "N", include: "E D",
+  incorporate: "E NK", insurance: "N SH", insure: "N SH", manufacture: "MN F", memorandum: "M E M O", morning: "MN .", mr: "M R",
+  mrs: "M R S", ms: "M S", never: "N V", newspaper: "N S P", next: "N E S", object: "O B K", of: "O", office: "O F", opinion: "O P N",
+  opportunity: "O P R", order: "O D", ordinary: "O TN", organize: "O G", over: "O", part: "P T", particular: "P A T", present: "P R",
+  privilege: "P R E V", probable: "P R B", product: "P R O D", program: "P R O G", progress: "P R G", property: "P R P T E", public: "P B",
+  publish: "P B SH", publication: "P B SH", quantity: "K T", question: "K SH", recognize: "R K N I S", recommend: "R E K", regard: "R E G D",
+  regular: "R E G", reluctance: "R E L U K", reluctant: "R E L U K", request: "R K E S T", responsible: "R S P", satisfy: "S A T E S",
+  satisfactory: "S A T E S", send: "S E N", several: "S E V", short: "SH T", should: "SH D", significant: "S E G N E F", significance: "S E G N E F",
+  soon: "S N", speak: "S P", state: "S T", statistic: "S T A T", street: "S T R", subject: "S J", success: "S U K", suggest: "S U G",
+  than: "TH N", thank: "TH .", that: "TH A", the: "TH", their: "TH", there: "TH", them: "TH M", they: "TH E", thing: "TH .", think: "TH .",
+  this: "TH S", throughout: "TH R A U", time: "T E M", under: "U", usual: "E U SH", value: "V L", very: "V E", was: "O S", well: "L", will: "L",
+  were: "E R", what: "O T", when: "E N", where: "A R", which: "CH", wish: "U SH", with: "E TH", won: "U N", one: "U N", work: "R K",
+  world: "U U", worth: "U U TH", would: "D", yesterday: "E S T", you: "U", your: "U",
+};
+// Derivatives the book writes from the brief forms (Lesson 1 and common court words)
+const CENTENNIAL_DERIVED: Record<string, string> = {
+  acknowledgment: "A K M", disadvantage: "D S A V", advertisement: "A V T I S M", afternoon: "A F T N", appropriately: "A P R O P E",
+  thanks: "TH . S", things: "TH . S", businesses: "B S S", ordered: "O D D", orders: "O D S", parts: "P T S", states: "S T S", questions: "K SH S",
+  directed: "D R K TD", directly: "D R K E", generally: "J E N E", usually: "E U SH E", immediately: "E M E E", particularly: "P A T E",
+  regularly: "R E G E", shortly: "SH T E", timely: "T E M E", worked: "R K T", works: "R K S", working: "R K .", speaking: "S P .",
+  presented: "P R N TD", presence: "P R S", hours: "R S", years: "E R S", witness: "U E T N S", witnesses: "U E T N S S",
 };
 const SIMPLIFIED_EXTRA: Record<string, string> = {
   acknowledge: "A K", advantage: "A V J", advertise: "A V T", circular: "S K L", company: "K M P", correspond: "K R S", difficult: "D F K",
@@ -214,7 +249,7 @@ const ANNIVERSARY_EXTRA: Record<string, string> = {
   strength: "S T R NG", surprise: "S P R S", system: "S S T", throughout_: "", together: "T G", unable: "N B", wonderful: "U N D F",
 };
 export function briefForms(series: Series): Record<string, string> {
-  const base = { ...CENTENNIAL };
+  const base = { ...CENTENNIAL, ...CENTENNIAL_DERIVED };
   if (series === "simplified" || series === "anniversary") Object.assign(base, SIMPLIFIED_EXTRA);
   if (series === "anniversary") Object.assign(base, ANNIVERSARY_EXTRA);
   for (const k of Object.keys(base)) if (!base[k] || k.endsWith("_")) delete base[k];
