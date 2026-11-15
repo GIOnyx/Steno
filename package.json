@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx scripts/test.mts",
+    "test": "tsx scripts/test.mts && tsx scripts/test-tsn.mts",
     "sync:assets": "node scripts/sync-assets.mjs"
   },
   "dependencies": {

@@ -1,18 +1,19 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Ctx } from "./TsnApp";
-import { C, EXAM_NAMES, Unit, buildUnits, isVerbatim, repsKey, speakerLabel, speakers } from "./state";
-
-type Row = { kind: string; speaker: string; text: string; t: number | null; first: number; n: number; exam?: string; label?: string };
+import { C, EXAM_NAMES, type Row, type Unit, buildUnits, isVerbatim, repsKey, speakerLabel, speakers } from "./state";
 
 export function StepSpeakers({ ctx }: { ctx: Ctx }) {
   const { S, update, undoRef } = ctx;
   const [menu, setMenu] = useState<{ i: number; x: number; y: number } | null>(null);
   const [editing, setEditing] = useState<{ i: number; value: string } | null>(null);
   const [xName, setXName] = useState("");
+  const [undoCount, setUndoCount] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const scrollSel = useRef(false);
+
+  useEffect(() => { setUndoCount(undoRef.current.length); }, [undoRef]);
 
   const rows: Row[] = C.groupRows(S.units);
   let n = 0;
@@ -28,7 +29,11 @@ export function StepSpeakers({ ctx }: { ctx: Ctx }) {
   const ok = isVerbatim(S);
   const edited = S.units.filter((u) => u.changed).length;
 
-  const snap = useCallback(() => { undoRef.current.push(JSON.stringify(ctx.S.units)); if (undoRef.current.length > 150) undoRef.current.shift(); }, [undoRef, ctx.S.units]);
+  const snap = useCallback(() => {
+    undoRef.current.push(JSON.stringify(ctx.S.units));
+    if (undoRef.current.length > 150) undoRef.current.shift();
+    setUndoCount(undoRef.current.length);
+  }, [undoRef, ctx.S.units]);
   const rowStart = (units: Unit[], i: number) => { let j = i; while (j > 0 && !units[j].start && units[j].kind !== "head") j--; return j; };
 
   const act = {
@@ -70,11 +75,13 @@ export function StepSpeakers({ ctx }: { ctx: Ctx }) {
     undo() {
       if (!undoRef.current.length) return;
       const prev = JSON.parse(undoRef.current.pop()!);
+      setUndoCount(undoRef.current.length);
       update((s) => { s.units = prev; s.sel = Math.min(s.sel, s.units.length - 1); });
     },
     move(d: number) { const t = S.sel + d; if (t < 0 || t >= S.units.length) return; scrollSel.current = true; update((s) => { s.sel = t; }); },
     edit() { const u = S.units[S.sel]; if (!u || u.kind === "head") return; setEditing({ i: S.sel, value: u.text || "" }); },
   };
+
   const doAct = (a: string) => {
     if (a === "q" || a === "a") act.label(a, "");
     else if (a === "order") act.label("order", "");
@@ -82,7 +89,6 @@ export function StepSpeakers({ ctx }: { ctx: Ctx }) {
     else if (a === "join") act.join(); else if (a === "head") act.head(); else if (a === "remove") act.remove(); else if (a === "undo") act.undo(); else if (a === "edit") act.edit();
   };
 
-  // keyboard
   const actRef = useRef(doAct);
   const moveRef = useRef(act.move);
   useEffect(() => { actRef.current = doAct; moveRef.current = act.move; });
@@ -116,7 +122,6 @@ export function StepSpeakers({ ctx }: { ctx: Ctx }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [ctx]);
 
-  // keep the selected sentence in view after keyboard moves
   useLayoutEffect(() => {
     if (!scrollSel.current || !sheetRef.current) return;
     scrollSel.current = false;
@@ -129,9 +134,17 @@ export function StepSpeakers({ ctx }: { ctx: Ctx }) {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [menu]);
+
+  const editingIdx = editing?.i ?? null;
   useEffect(() => {
-    if (editing && taRef.current) { const ta = taRef.current; ta.style.height = "auto"; ta.style.height = ta.scrollHeight + 2 + "px"; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
-  }, [editing?.i]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (editingIdx !== null && taRef.current) {
+      const ta = taRef.current;
+      ta.style.height = "auto";
+      ta.style.height = ta.scrollHeight + 2 + "px";
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
+  }, [editingIdx]);
 
   const finishEdit = (save: boolean) => {
     if (!editing) return;
@@ -161,19 +174,58 @@ export function StepSpeakers({ ctx }: { ctx: Ctx }) {
     update((s) => { s.sel = i; });
     setMenu({ i, x: Math.max(8, r.left + window.scrollX), y: r.bottom + window.scrollY + 4 });
   };
-  const key = (k: string, text: string, a: string) => <button type="button" key={a} onClick={() => doAct(a)}><kbd>{k}</kbd><span>{text}</span></button>;
 
-  const menuItems: [string, string][] = menu && S.units[menu.i]?.kind === "head" ? [["remove", "Remove this heading"]]
-    : ([["q", "Question"], ["a", "Answer"]] as [string, string][]).concat(sp.map((x) => ["sp:" + x.id, x.label] as [string, string]), [["order", "Part of the court’s order"]]);
+  const selUnit = S.units[S.sel];
+  const selRowStart = selUnit ? rowStart(S.units, S.sel) : 0;
+  const selOwner = selUnit?.kind === "head" ? S.units[S.sel] : S.units[selRowStart];
+  const currentRoleKey = selOwner?.kind === "sp" ? "sp:" + (selOwner.speaker || "") : selOwner?.kind || "";
+  const isHeadSelected = selUnit?.kind === "head";
+  const canJoin = !!selUnit && S.sel > 0 && !isHeadSelected && S.units[S.sel - 1]?.kind !== "head" && !!selUnit.start;
+
+  const key = (k: string, text: string, a: string, disabled = false) => (
+    <button
+      type="button"
+      key={a}
+      className={currentRoleKey === a ? "active-role" : undefined}
+      disabled={disabled}
+      onClick={() => doAct(a)}
+    >
+      <span>{text}</span>
+      <kbd>{k}</kbd>
+    </button>
+  );
+
+  const menuItems: [string, string][] = menu && S.units[menu.i]?.kind === "head"
+    ? [["remove", "Remove this heading"]]
+    : ([["q", "Question (Q)"], ["a", "Answer (A)"]] as [string, string][]).concat(
+        sp.map((x) => ["sp:" + x.id, x.label] as [string, string]),
+        [["order", "Part of the court’s order"]]
+      );
+
+  const selLabelText = !selUnit
+    ? "No sentence"
+    : selUnit.kind === "head"
+      ? "Examination heading"
+      : selOwner?.kind === "q"
+        ? "Question"
+        : selOwner?.kind === "a"
+          ? "Answer"
+          : selOwner?.kind === "order"
+            ? "Court’s Order"
+            : speakerLabel(S, selOwner?.speaker || "");
 
   return (
     <>
-      <div className="pagehead"><h1>Speakers</h1><p className="lede">Scriptix does not say who is talking, so this is a first guess. Click a sentence, then press a key to say who speaks it. A new row starts at that sentence.</p></div>
+      <div className="pagehead">
+        <div className="step-kicker">Step 4 of 5</div>
+        <h1>Speakers</h1>
+        <p className="lede">Click any sentence below (highlighted in yellow) and choose who says it on the right—or click any speaker badge on the left to change a whole paragraph at once.</p>
+      </div>
       {stale && (
         <div className="notice warn">
-          <p>The case range or the name fixes changed after these rows were made.</p>
-          <button type="button" className="btn primary" onClick={() => { undoRef.current = []; update((s) => buildUnits(s)); }}>Rebuild the rows</button>
-          <button type="button" className="btn" onClick={() => update((s) => { s.unitsKey = repsKey(s); })}>Keep these rows</button>
+          <p>The recording trim or name fixes changed after these rows were built.</p>
+          <button type="button" className="btn primary" onClick={() => { undoRef.current = []; setUndoCount(0); update((s) => buildUnits(s)); }}>Rebuild rows cleanly</button>
+          <button type="button" className="btn" onClick={() => update((s) => { s.unitsKey = repsKey(s); })}>Keep my current edits</button>
         </div>
       )}
       <div className="work">
@@ -183,7 +235,7 @@ export function StepSpeakers({ ctx }: { ctx: Ctx }) {
               return (
                 <div className="row head" key={"h" + r.first}>
                   <div className="ts"></div>
-                  <button type="button" className="lab" onClick={(e) => openMenu(e, r.first)}>{r.label}</button>
+                  <button type="button" className="lab" title="Click to remove heading" onClick={(e) => openMenu(e, r.first)}>{r.label} ▾</button>
                   <div className={"txt" + (S.sel === r.first ? " sel" : "")} onClick={(e) => { if (!(e.target as HTMLElement).closest("select")) select(r.first); }}>
                     Questions to the witness for{" "}
                     <select aria-label="Kind of examination" value={r.exam} onChange={(e) => { snap(); update((s) => { s.units[r.first].exam = e.target.value; }); }}>
@@ -203,49 +255,108 @@ export function StepSpeakers({ ctx }: { ctx: Ctx }) {
               if (editing && editing.i === i) {
                 spans.push(
                   <span key={i}>
-                    <span className="edithelp">Enter to finish, Esc to cancel, Ctrl+Enter to split here</span>
-                    <textarea ref={taRef} aria-label="Edit the words" value={editing.value}
+                    <span className="edithelp">Edit words below, or place the cursor where you want to split and click Split here.</span>
+                    <textarea
+                      ref={taRef}
+                      aria-label="Edit the words"
+                      value={editing.value}
                       onChange={(e) => { setEditing({ i, value: e.target.value }); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + 2 + "px"; }}
-                      onBlur={() => finishEdit(true)}
                       onKeyDown={(e) => {
                         e.stopPropagation();
                         if (e.key === "Escape") { e.preventDefault(); finishEdit(false); }
                         else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); splitEdit(e.currentTarget.selectionStart); }
                         else if (e.key === "Enter") { e.preventDefault(); finishEdit(true); }
-                      }} />
-                  </span>);
+                      }}
+                    />
+                    <span className="editbar">
+                      <button type="button" className="btn small primary" onClick={() => finishEdit(true)}>Save words</button>
+                      <button type="button" className="btn small" onClick={() => splitEdit(taRef.current?.selectionStart ?? Math.floor(editing.value.length / 2))}>Split sentence at cursor</button>
+                      <button type="button" className="btn small ghost" onClick={() => finishEdit(false)}>Cancel</button>
+                    </span>
+                  </span>
+                );
               } else {
-                spans.push(<span key={i} className={"u" + (i === S.sel ? " sel" : "") + (u.changed ? " changed" : "")}
-                  onClick={() => select(i)} onDoubleClick={() => { update((s) => { s.sel = i; }); setEditing({ i, value: u.text || "" }); }}>{u.text}</span>, " ");
+                spans.push(
+                  <span
+                    key={i}
+                    className={"u" + (i === S.sel ? " sel" : "") + (u.changed ? " changed" : "")}
+                    onClick={() => select(i)}
+                    onDoubleClick={() => { update((s) => { s.sel = i; }); setEditing({ i, value: u.text || "" }); }}
+                  >
+                    {u.text}
+                  </span>,
+                  " "
+                );
               }
             }
             return (
               <div className={"row " + r.kind} key={r.first}>
                 <div className="ts">{C.fmtTime(r.t)}</div>
-                <button type="button" className="lab" title="Change who is speaking" onClick={(e) => openMenu(e, r.first)}>{r.label}</button>
+                <button type="button" className="lab" title="Click to change speaker" onClick={(e) => openMenu(e, r.first)}>{r.label} ▾</button>
                 <div className="txt">{spans}</div>
               </div>
             );
           })}
         </div>
+
         <aside className="panel" aria-label="Row tools">
-          <div className={"badge " + (ok ? "ok" : "note")}>{ok ? "Every word matches the recording, in order." : (edited ? edited + " sentence" + (edited > 1 ? "s" : "") + " edited by hand. " : "") + "The wording now differs from the Scriptix text."}</div>
-          <div><h3>Who says the highlighted sentence</h3><div className="keys">
-            {key("Q", "Question", "q")}{key("A", "Answer", "a")}
-            {sp.map((x) => key(x.key || "•", x.label, "sp:" + x.id))}
-            {key("O", "Part of the court’s order", "order")}
-          </div></div>
-          <div><h3>Fix the rows</h3><div className="keys">
-            {key("M", "Join to the row above", "join")}{key("E", "Edit the words", "edit")}
-            {key("H", "Add an examination heading", "head")}{key("Del", "Remove this sentence", "remove")}{key("Ctrl+Z", "Undo", "undo")}
-          </div><p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>Move with the arrow keys. While editing, Ctrl+Enter splits the sentence where the cursor is.</p></div>
-          <label className="check" style={{ fontSize: 13.5, alignItems: "start" }}><input type="checkbox" checked={S.cont} onChange={(e) => update((s) => { s.cont = e.target.checked; })} /><span>Print a “CONT.” line when counsel resumes after an interruption</span></label>
-          <div><h3>Someone else speaks</h3><div style={{ display: "flex", gap: 6 }}>
-            <input type="text" placeholder="PROS. EJEM" aria-label="New speaker label" value={xName} onChange={(e) => setXName(e.target.value)} />
-            <button type="button" className="btn small" onClick={() => { const v = C.norm(xName).replace(/:$/, "").toUpperCase(); if (v && !S.extras.includes(v)) update((s) => { s.extras.push(v); }); setXName(""); }}>Add</button>
-          </div></div>
+          <div className="sel-card">
+            <div className="sel-head">
+              <span>Selected: {selLabelText}</span>
+              <button
+                type="button"
+                className="btn small"
+                disabled={!undoCount}
+                onClick={() => doAct("undo")}
+                title="Shortcut: Ctrl+Z"
+              >
+                Undo{undoCount ? ` (${undoCount})` : ""}
+              </button>
+            </div>
+            <div className="sel-snippet">{selUnit?.kind === "head" ? "Examination heading above row" : (selUnit?.text || "—")}</div>
+          </div>
+
+          <div className={"badge " + (ok ? "ok" : "note")}>
+            {ok
+              ? "Every word matches the recording, in order."
+              : (edited ? edited + " sentence" + (edited > 1 ? "s" : "") + " edited by hand. " : "") + "Wording differs slightly from the raw Scriptix text."}
+          </div>
+
+          <div>
+            <h3>Change who speaks selected sentence</h3>
+            <div className="keys">
+              {key("Q", "Question", "q", isHeadSelected)}
+              {key("A", "Answer", "a", isHeadSelected)}
+              {sp.map((x) => key(x.key || "•", x.label, "sp:" + x.id, isHeadSelected))}
+              {key("O", "Part of court’s order", "order", isHeadSelected)}
+            </div>
+          </div>
+
+          <div>
+            <h3>Fix rows & text</h3>
+            <div className="keys">
+              {key("M", "Merge with row above", "join", !canJoin)}
+              {key("E", "Edit or split words", "edit", isHeadSelected)}
+              {key("H", "Insert examination heading", "head", isHeadSelected)}
+              {key("Del", "Remove selected row/sentence", "remove", !selUnit)}
+            </div>
+          </div>
+
+          <label className="check" style={{ fontSize: 13.5, alignItems: "start", gridColumn: "auto" }}>
+            <input type="checkbox" checked={S.cont} onChange={(e) => update((s) => { s.cont = e.target.checked; })} />
+            <span>Print “CONT.” when counsel resumes speaking</span>
+          </label>
+
+          <div>
+            <h3>Someone else speaks?</h3>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input type="text" placeholder="PROS. EJEM" aria-label="New speaker label" value={xName} onChange={(e) => setXName(e.target.value)} />
+              <button type="button" className="btn small" onClick={() => { const v = C.norm(xName).replace(/:$/, "").toUpperCase(); if (v && !S.extras.includes(v)) update((s) => { s.extras.push(v); }); setXName(""); }}>Add</button>
+            </div>
+          </div>
         </aside>
       </div>
+
       {menu && (
         <div className="menu" role="menu" style={{ left: menu.x, top: menu.y }}>
           {menuItems.map(([a, t]) => <button type="button" role="menuitem" key={a} onClick={() => { setMenu(null); doAct(a); }}>{t}</button>)}

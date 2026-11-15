@@ -1,13 +1,11 @@
-/* State shape and pure helpers for the TSN tool. All processing happens in lib/tsn/core.js. */
-import Core from "@/lib/tsn/core";
+/* State shape and pure helpers for the TSN tool. All processing happens in lib/tsn/core.ts. */
+import Core, { type Block, type NameSuggestion, type Row, type TimedSentence, type Unit, type VocabEntry } from "@/lib/tsn/core";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-export const C: any = Core;
+export const C = Core;
 
-export type Block = { i: number; t: number; ts: string; who: string; text: string };
-export type Unit = { text?: string; t?: number; start?: boolean; kind?: string; speaker?: string; exam?: string; changed?: boolean };
+export type { Block, Row, Unit, VocabEntry };
+export type Sugg = NameSuggestion;
 export type Counsel = { name: string; roles: string; label: string };
-export type Sugg = { from: string; to: string; count: number; score: number; on: boolean };
 export type Custom = { from: string; to: string; on: boolean };
 export type CaseInfo = {
   caseType: string; caseNo: string; nature: string; plaintiffs: string; pDesig: string; defendants: string; dDesig: string;
@@ -29,13 +27,13 @@ export const SESSION_KEY = "stenoTools.tsn.session.v1";
 export const STEPS = ["Case details", "Recording", "Names", "Speakers", "Save"];
 export const EXAM_NAMES: Record<string, string> = { direct: "direct", cross: "cross", "re-direct": "re-direct", "re-cross": "re-cross", additional: "additional direct", clarificatory: "clarificatory" };
 export const DEFAULT_STAFF: Staff = {
-  judgeCover: "HON. PHILLINE ROSAME P. RELUYA-YU", judge: "PHILLINE ROSAMAE P. RELUYA-YU", judgeTitle: "Presiding Judge",
+  judgeCover: "HON. PHILLINE ROSAMAE P. RELUYA-YU", judge: "PHILLINE ROSAMAE P. RELUYA-YU", judgeTitle: "Presiding Judge",
   interp: "MITZFEL C. CAÑARES", interpTitle: "Acting Court Interpreter", steno: "ZYLYN M. BADINAS", stenoTitle: "Acting Court Stenographer",
   tsnBy: "Z. M. Badinas", place: "Carcar City, Cebu, Philippines.", certPlace: "Carcar City, Cebu,",
 };
 
 export const store = {
-  get<T = any>(k: string): T | null { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : null; } catch { return null; } },
+  get<T = unknown>(k: string): T | null { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : null; } catch { return null; } },
   set(k: string, v: unknown): boolean { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
   del(k: string) { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } },
 };
@@ -79,12 +77,12 @@ export const isVerbatim = (S: State) => C.verbatim(C.groupRows(S.units), S.sourc
 
 export function ensureSuggestions(S: State) {
   const v = vocab(S);
-  const key = JSON.stringify([S.fileName, S.range, v.map((x: any) => x.key)]);
+  const key = JSON.stringify([S.fileName, S.range, v.map((x: VocabEntry) => x.key)]);
   if (key === S.suggKey) return;
   const all = S.blocks.map((b) => b.text).join(" ");
   const segText = segBlocks(S).map((b) => b.text).join(" ");
   const old = new Map(S.sugg.map((x) => [x.from, x]));
-  S.sugg = C.suggestNames(segText, v, C.lowercaseWords(all)).map((x: Sugg) => {
+  S.sugg = C.suggestNames(segText, v, C.wordCaseStats(all)).map((x: Sugg) => {
     const o = old.get(x.from);
     return o ? Object.assign(x, { on: o.on, to: o.to }) : x;
   });
@@ -103,7 +101,7 @@ export function buildUnits(S: State) {
   if (fq >= 0) pre.splice(fq, 0, { kind: "head", exam: S.case.exam || "direct", speaker: examiner });
   const order: Unit[] = [];
   let prevT: number | null = null; // one order paragraph per time-stamped part
-  C.sentencesOf(blocks.slice(o.start, o.end + 1)).forEach((s: { text: string; t: number }) => {
+  C.sentencesOf(blocks.slice(o.start, o.end + 1)).forEach((s: TimedSentence) => {
     order.push(s.t !== prevT ? { text: s.text, t: s.t, start: true, kind: "order", speaker: "" } : { text: s.text, t: s.t, start: false });
     prevT = s.t;
   });

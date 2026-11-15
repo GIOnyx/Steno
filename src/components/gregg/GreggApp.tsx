@@ -75,7 +75,7 @@ export function GreggApp() {
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
       const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-      setMsg("Saved “" + name + "” to your browser’s download folder.");
+      setMsg("Saved “" + name + "” to your Downloads folder.");
     } catch (e) { setMsg("The PDF could not be made: " + (e as Error).message); }
     setBusy(false);
   };
@@ -91,31 +91,37 @@ export function GreggApp() {
   return (
     <main className="main">
       <div className="gwrap">
-        <div className="pagehead"><h1>Gregg shorthand</h1><p className="lede">Drop a Word or text file, or paste text, and read it back in Gregg outlines on steno-pad lines. Outlines follow the system’s rules from each word’s sounds, so they will not always match the textbook form.</p></div>
+        <div className="pagehead">
+          <h1>Gregg shorthand</h1>
+          <p className="lede">Upload a Word or text file—or type or paste English text—to read it on a ruled steno pad and save it as a printable PDF.</p>
+        </div>
 
         {s.text ? (
           <div className="gsrc" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); }}>
             <strong>{fileName || "Pasted text"}</strong>
-            <span className="meta">{wordCount.toLocaleString()} words · {paras.length} paragraphs</span>
+            <span className="meta">{wordCount.toLocaleString()} words · {paras.length} paragraph{paras.length > 1 ? "s" : ""}</span>
             <span className="grow" />
             <button type="button" className="btn small" onClick={() => setShowText((v) => !v)}>{showText ? "Hide the text" : "Edit the text"}</button>
-            <button type="button" className="btn small" onClick={() => fileRef.current?.click()}>Change file</button>
+            <button type="button" className="btn small" onClick={() => fileRef.current?.click()}>Choose another file</button>
             <button type="button" className="btn ghost small" onClick={() => { set("text", ""); setFileName(""); setShowText(false); }}>Clear</button>
           </div>
         ) : (
           <div className={"gsrc empty" + (over ? " over" : "")} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
             onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); }}>
-            <strong>Drop a .docx or .txt here</strong>
-            <span className="meta">A TSN, an order, or any English document. Or paste text below.</span>
-            <div style={{ display: "flex", gap: 8 }}><button type="button" className="btn primary" onClick={() => fileRef.current?.click()}>Choose a file</button><button type="button" className="btn" onClick={() => setShowText(true)}>Paste text</button></div>
+            <strong>Drop a Word (.docx) or text (.txt) file here</strong>
+            <span className="meta">Or click below to pick a file or type your own text. A sample transcript is previewed on the pad below.</span>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+              <button type="button" className="btn primary" onClick={() => fileRef.current?.click()}>Choose a file</button>
+              <button type="button" className="btn" onClick={() => setShowText((v) => !v)}>{showText ? "Hide text box" : "Type or paste text"}</button>
+            </div>
           </div>
         )}
         <input ref={fileRef} type="file" accept=".docx,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ""; }} />
         {fileErr && <p className="error" role="alert">{fileErr}</p>}
         {showText && (
-          <div className="gtext"><label className="f"><span>Text</span>
+          <div className="gtext"><label className="f"><span>English text</span>
             <textarea value={s.text} placeholder={SAMPLE} onChange={(e) => set("text", e.target.value)} spellCheck={false} autoFocus />
-            <small>{!s.text && "Showing a sample on the pad until you add text."}</small>
+            <small>{!s.text && "Showing a sample on the steno pad until you type or paste text here."}</small>
           </label></div>
         )}
 
@@ -123,50 +129,64 @@ export function GreggApp() {
           <label className="f"><span>Series</span>
             <select value={s.series} onChange={(e) => set("series", e.target.value as Series)}>{SERIES.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
           </label>
-          <label className="f"><span>Page</span>
+          <label className="f"><span>PDF paper size</span>
             <select value={s.pageSize} onChange={(e) => set("pageSize", e.target.value as PdfOptions["pageSize"])}><option value="steno">Steno pad 6 × 9 in</option><option value="letter">Letter</option><option value="a4">A4</option></select>
           </label>
           <label className="check"><input type="checkbox" checked={s.gloss} onChange={(e) => set("gloss", e.target.checked)} /><span>English under each line</span></label>
           <label className="check"><input type="checkbox" checked={s.colour} onChange={(e) => set("colour", e.target.checked)} /><span>Colour by source</span></label>
-          <label className="check" title="Unknown capitalised words are read as spelled, the way Filipino and Spanish names are pronounced"><input type="checkbox" checked={s.names} onChange={(e) => set("names", e.target.checked)} /><span>Names read as Filipino</span></label>
+          <label className="check" title="Unknown capitalised words are read as spelled, the way Filipino and Spanish names are pronounced"><input type="checkbox" checked={s.names} onChange={(e) => set("names", e.target.checked)} /><span>Read names as Filipino</span></label>
           <div className="right">
-            <span className="muted" style={{ fontSize: 12.5 }}>{dictErr ? "Dictionary unavailable; words spelled out" : ready ? "Dictionary loaded" : "Loading dictionary…"}</span>
+            <span className={"status-pill " + (dictErr ? "warn" : ready ? "ready" : "")}>
+              {dictErr ? "Dictionary unavailable" : ready ? "Dictionary loaded" : "Loading dictionary…"}
+            </span>
             <button type="button" className="btn primary" onClick={savePdf} disabled={busy || !paras.length}>{busy ? "Making the PDF…" : "Save the PDF"}</button>
           </div>
         </div>
-        {msg && <p className="muted" style={{ fontSize: 13 }} role="status">{msg}</p>}
-        <p className="muted" style={{ fontSize: 13, margin: "4px 0 0" }}>{SERIES.find((x) => x.id === s.series)!.note} {Object.keys(briefs).length} brief forms in use.</p>
+        {msg && <div className="notice ok" style={{ marginBottom: 10 }} role="status"><p>{msg}</p></div>}
+        <p className="muted" style={{ fontSize: 13.5, margin: "4px 0 0" }}>
+          {!s.text && <strong>Sample preview · </strong>}
+          {SERIES.find((x) => x.id === s.series)!.note} ({Object.keys(briefs).length} brief forms active)
+        </p>
 
-        <div className="pad" ref={padRef}>
+        <div className={"pad" + (narrow ? " narrow" : "")} ref={padRef}>
           <div className="spiral" />
           <div className="centerline" />
           <div className="padcols">
             {(narrow ? [lines] : [lines.slice(0, half), lines.slice(half)]).map((colLines, ci) => (
-              <div key={ci} style={{ padding: ci ? "0 20px 0 28px" : "0 28px 0 20px" }}>
+              <div key={ci} style={{ padding: narrow ? "0 20px" : ci ? "0 20px 0 28px" : "0 28px 0 20px" }}>
                 {colLines.map((ln, li) => <PadLine key={li} line={ln} first={li === 0} gloss={s.gloss} colour={s.colour} />)}
                 {!narrow && ci === 1 && colLines.length < half && Array.from({ length: half - colLines.length }).map((_, i) => <div key={"e" + i} className="padline" />)}
               </div>
             ))}
           </div>
         </div>
+
         <div className="legend">
-          <span><i style={{ background: "#1A2233" }} />1930 dictionary outline ({counts.gregg1930 || 0})</span>
-          <span><i style={{ background: "#475A7A" }} />Built from the word’s sounds ({counts.dict || 0})</span>
-          <span><i style={{ background: "#16308F" }} />Brief form ({(counts.brief || 0) + (counts.custom || 0)})</span>
-          <span><i style={{ background: "#8A5A00" }} />Spelled out, not in the dictionary ({(counts.guess || 0) + (counts.filipino || 0)})</span>
-          <span>Numbers and symbols stay in longhand.</span>
+          <span><i style={{ background: "#1A2233" }} />1930 dictionary ({counts.gregg1930 || 0})</span>
+          <span><i style={{ background: "#475A7A" }} />Sound-based ({counts.dict || 0})</span>
+          <span><i style={{ background: "#16308F" }} />Brief form / custom ({(counts.brief || 0) + (counts.custom || 0)})</span>
+          <span><i style={{ background: "#8A5A00" }} />Spelled out ({(counts.guess || 0) + (counts.filipino || 0)})</span>
+          <span>Numbers & punctuation stay in longhand.</span>
         </div>
 
         <section className="wordlist">
           <div className="sub" style={{ display: "flex", alignItems: "end", gap: 18, flexWrap: "wrap" }}>
-            <div><h2>Words</h2><p>Check the outlines word by word. Type a stroke code to override one; your overrides are kept on this computer for the {SERIES.find((x) => x.id === s.series)!.name.split(" ")[0]} series.</p></div>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-              {(["guess", "brief", "all"] as const).map((f) => <button key={f} type="button" className={"btn small" + (filter === f ? " primary" : "")} onClick={() => setFilter(f)}>{f === "guess" ? "Spelled out" : f === "brief" ? "Brief forms" : "All words"}</button>)}
+            <div>
+              <h2>Word-by-word check</h2>
+              <p>Inspect how each word was drawn. You can edit any outline’s stroke code on the right and it will be remembered for the {SERIES.find((x) => x.id === s.series)!.name.split(" ")[0]} series.</p>
+            </div>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(["guess", "brief", "all"] as const).map((f) => (
+                <button key={f} type="button" className={"btn small" + (filter === f ? " primary" : "")} onClick={() => setFilter(f)}>
+                  {f === "guess" ? "Spelled out" : f === "brief" ? "Brief forms" : "All words"}
+                </button>
+              ))}
             </div>
           </div>
-          {shown.length === 0 ? <div className="empty">Nothing in this group.</div> : (
-            <div style={{ overflowX: "auto" }}><table>
-              <thead><tr><th>Word</th><th>Outline</th><th>Times</th><th>How it was made</th><th>Stroke code</th></tr></thead>
+
+          {shown.length === 0 ? <div className="empty">No words in this filter. Try switching to “All words” above.</div> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Word</th><th>Outline</th><th>Times</th><th>Source</th><th>Stroke code override</th></tr></thead>
               <tbody>
                 {shown.slice(0, 400).map((w) => {
                   const k = w.word.toLowerCase();
@@ -178,25 +198,40 @@ export function GreggApp() {
                         dangerouslySetInnerHTML={{ __html: w.outline ? outlineSvg(w.outline, 10) : "<span class=muted>longhand</span>" }} />
                       <td>{w.n}</td>
                       <td className="muted">{sourceText(w.source)}{w.grascii ? <> · <code>{w.grascii}</code></> : w.sounds ? <> · sounds <code>{w.sounds.join("")}</code></> : null}</td>
-                      <td><input type="text" style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 12.5 }} defaultValue={custom || tokensToCode(w.tokens)} key={k + (custom || "")}
-                        onBlur={(e) => { const v = e.target.value.trim(); if (v !== tokensToCode(w.tokens) || custom) setCustom(k, v === tokensToCode(w.tokens) && !briefs[k] ? "" : v); }} /></td>
+                      <td>
+                        <input
+                          type="text"
+                          aria-label={"Stroke code for " + w.word}
+                          style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 13 }}
+                          defaultValue={custom || tokensToCode(w.tokens)}
+                          key={k + (custom || "")}
+                          onBlur={(e) => { const v = e.target.value.trim(); if (v !== tokensToCode(w.tokens) || custom) setCustom(k, v === tokensToCode(w.tokens) && !briefs[k] ? "" : v); }}
+                        />
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table></div>
           )}
-          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Stroke codes: K G R L N M T D TH P B F V SH CH J S X NG NK Y, blends TN TM MN NT MT DF, blend TD (ted/ded/dit), vowels A (large circle) E (small circle) EF (flattened e, -ily) I O U OW OI YU (add _ after a vowel for medial w, e.g. E_), “.” for the -ing dot (also “a/an”), “~s” for the disjoined -ings, “~e” for the disjoined -ingly, “h” for the h dot. Example: <code>K O R T</code> is “court”.</p>
+
+          <details className="stroke-guide">
+            <summary>Stroke code guide (for manual overrides)</summary>
+            <p>Consonants: <code>K G R L N M T D TH P B F V SH CH J S X NG NK Y</code> · Blends: <code>TN TM MN NT MT DF</code> and <code>TD</code> (ted/ded/dit) · Vowels: <code>A</code> (large circle), <code>E</code> (small circle), <code>EF</code> (flattened e / -ily), <code>I O U OW OI YU</code> (add <code>_</code> after a vowel for medial w, e.g. <code>E_</code>) · Suffixes/dots: <code>.</code> (-ing dot / a / an), <code>~s</code> (-ings), <code>~e</code> (-ingly), <code>h</code> (h dot). Example: <code>K O R T</code> draws “court”.</p>
+          </details>
         </section>
       </div>
-      <div className="gfoot"><span className="hint">Nothing is uploaded; the PDF is made in this browser.</span><button type="button" className="btn primary" onClick={savePdf} disabled={busy}>Save the PDF</button></div>
+      <div className="gfoot">
+        <span className="hint">Nothing leaves this computer; the PDF is created directly in your browser.</span>
+        <button type="button" className="btn primary" onClick={savePdf} disabled={busy}>Save the PDF</button>
+      </div>
     </main>
   );
 }
 
 function rank(s: Source) { return s === "guess" ? 0 : s === "filipino" ? 1 : s === "custom" ? 2 : s === "brief" ? 3 : s === "dict" ? 4 : s === "gregg1930" ? 5 : 6; }
 function sourceText(s: Source) {
-  return s === "gregg1930" ? "1930 Anniversary dictionary outline" : s === "dict" ? "From its sounds" : s === "brief" ? "Brief form" : s === "custom" ? "Your override" : s === "filipino" ? "Spelled out as a Filipino/Spanish name" : s === "guess" ? "Spelled out (not in the dictionary)" : "Longhand";
+  return s === "gregg1930" ? "1930 dictionary" : s === "dict" ? "From sounds" : s === "brief" ? "Brief form" : s === "custom" ? "Your override" : s === "filipino" ? "Filipino/Spanish spelling" : s === "guess" ? "Spelled out" : "Longhand";
 }
 
 function PadLine({ line, first, gloss, colour }: { line: Line; first: boolean; gloss: boolean; colour: boolean }) {
