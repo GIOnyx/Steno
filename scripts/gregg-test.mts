@@ -3,7 +3,7 @@ import { outlineFor, outlineSvg } from "../src/lib/gregg/strokes.ts";
 import { renderWord, loadDictionary } from "../src/lib/gregg/engine.ts";
 (globalThis as any).fetch = async () => ({ ok: true, text: async () => fs.readFileSync("public/dict/cmu.txt", "utf8") });
 await loadDictionary();
-const words = (process.argv[2] || "can name mean tan deed keep gag page pay bay fee vie she church judge yes with think honorable witness Lomongo Unabia Carcar attorney testimony hearing order plaintiff defendant and the of to in is that you for are will have was this there").split(" ");
+const words = (process.argv[2] || "a doing hearing knowing thinking dealings earnings findings meetings briefly costly daily early greatly likely accordingly knowingly willingly easily family readily steadily necessarily accepted acted completed dated instead invested listed today added graded needed provided audit credit detail edit editor about acknowledge after afternoon any appropriate").split(" ");
 let cells = "";
 for (const w of words) {
   const r = renderWord(w, { series: "centennial" });

@@ -172,7 +172,7 @@ export function GreggApp() {
               </tbody>
             </table></div>
           )}
-          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Stroke codes: K G R L N M T D TH P B F V SH CH J S X NG NK Y, blends TN TM MN NT MT DF, vowels A (large circle) E (small circle) I O U OW OI YU, “.” for the -ing dot, “-” for -ings, “h” for the h dot. Example: <code>K O R T</code> is “court”.</p>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Stroke codes: K G R L N M T D TH P B F V SH CH J S X NG NK Y, blends TN TM MN NT MT DF, blend TD (ted/ded/dit), vowels A (large circle) E (small circle) EF (flattened e, -ily) I O U OW OI YU, “.” for the -ing dot (also “a/an”), “~s” for the disjoined -ings, “~e” for the disjoined -ingly, “h” for the h dot. Example: <code>K O R T</code> is “court”.</p>
         </section>
       </div>
       <div className="gfoot"><span className="hint">Nothing is uploaded. The PDF is made in this browser.</span><button type="button" className="btn primary" onClick={savePdf} disabled={busy}>Save the PDF</button></div>

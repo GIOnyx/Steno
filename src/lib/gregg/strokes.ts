@@ -32,6 +32,7 @@ export const STROKES: Record<string, StrokeDef> = {
   D: { len: 1.9, angle: UP, curve: 0 },
   TN: { len: 1.9, angle: -45 * DEG, curve: 0 },       // ten / den blend
   TM: { len: 2.7, angle: -45 * DEG, curve: 0 },       // tem / dem blend
+  TD: { len: 2.8, angle: UP, curve: 0 },              // ted / ded / dit blend: a very long t
   NT: { len: 1.6, angle: UP, curve: +1, depth: 0.08 },// ent / end blend: a slightly curved long t
   MT: { len: 2.4, angle: UP, curve: +1, depth: 0.07 },
   TH: { len: 1.0, angle: UP, curve: +1, depth: 0.14 },// "ith"
@@ -86,6 +87,17 @@ function circleSeg(P: Pt, r: number, n: Pt, travel: Pt): Seg {
   const d = `A${f(r)} ${f(r)} 0 0 ${sweep} ${f(opp.x)} ${f(opp.y)}A${f(r)} ${f(r)} 0 0 ${sweep} ${f(P.x)} ${f(P.y)}`;
   return { d, end: P, bbox: [{ x: c.x - r, y: c.y - r }, { x: c.x + r, y: c.y + r }] };
 }
+// A flattened circle (the -ily ending): an ellipse tangent at P, long axis along the travel direction.
+function ellipseSeg(P: Pt, rx: number, ry: number, n: Pt, travel: Pt): Seg {
+  const c = add(P, n, ry);
+  const rot = Math.atan2(travel.y, travel.x) * 180 / Math.PI;
+  const cross = travel.x * n.y - travel.y * n.x;
+  const sweep = cross > 0 ? 1 : 0;
+  const opp = add(c, n, ry);
+  const d = `A${f(rx)} ${f(ry)} ${f(rot)} 0 ${sweep} ${f(opp.x)} ${f(opp.y)}A${f(rx)} ${f(ry)} ${f(rot)} 0 ${sweep} ${f(P.x)} ${f(P.y)}`;
+  const r = Math.max(rx, ry);
+  return { d, end: P, bbox: [{ x: c.x - r, y: c.y - r }, { x: c.x + r, y: c.y + r }] };
+}
 // A hook: an open arc. `open` is the unit direction the opening faces; `travel` decides which tip is entered first.
 function hookSeg(P: Pt, r: number, open: Pt, travel: Pt): Seg {
   let t = leftNormal(open);
@@ -101,7 +113,8 @@ function hookSeg(P: Pt, r: number, open: Pt, travel: Pt): Seg {
 /* ---------- token model ---------- */
 export type Token =
   | { k: "c"; s: string }                         // consonant stroke, key of STROKES
-  | { k: "v"; v: "A" | "E" | "I" | "O" | "U" | "OW" | "OI" | "YU" }
+  | { k: "v"; v: "A" | "E" | "EF" | "I" | "O" | "U" | "OW" | "OI" | "YU" }   // EF = flattened e circle (-ily)
+  | { k: "dis"; m: "s" | "e" }                     // disjoined mark after the word: left s (-ings) or small circle (-ingly)
   | { k: "dot" }                                   // -ing, and the h dot
   | { k: "dash" }                                  // -ings
   | { k: "h" };                                    // h: dot above the following vowel
@@ -127,6 +140,14 @@ export function outlineFor(tokens: Token[]): Outline {
     if (t.k === "h") { hPending = true; return; }
     if (t.k === "dot") { dots.push({ x: pen.x + 0.45, y: pen.y - 0.15 }); merge([{ x: pen.x + 0.3, y: pen.y - 0.3 }, { x: pen.x + 0.6, y: pen.y }]); return; }
     if (t.k === "dash") { dashes.push({ x: pen.x + 0.35, y: pen.y - 0.15 }); merge([{ x: pen.x + 0.3, y: pen.y - 0.3 }, { x: pen.x + 0.9, y: pen.y }]); return; }
+    if (t.k === "dis") {
+      // a detached mark a little to the right of where the word ended
+      const p0 = { x: pen.x + 0.55, y: pen.y - 0.45 };
+      if (t.m === "s") { const seg = strokeSeg(p0, STROKES.SL); parts.push(`M${f(p0.x)} ${f(p0.y)}` + seg.d); merge(seg.bbox); }
+      else { const seg = circleSeg(p0, SMALL_R, { x: 0, y: 1 }, { x: 1, y: 0 }); parts.push(`M${f(p0.x)} ${f(p0.y)}` + seg.d); merge(seg.bbox); }
+      parts.push(`M${f(pen.x)} ${f(pen.y)}`);
+      return;
+    }
     if (t.k === "c") {
       const def = STROKES[t.s];
       if (!def) return;
@@ -165,6 +186,7 @@ export function outlineFor(tokens: Token[]): Outline {
     const prevKey = prevKeyOf(tokens, i), nextKey = next;
     if (v === "A") circle(LARGE_R);
     else if (v === "E") circle(SMALL_R);
+    else if (v === "EF") { const sg = ellipseSeg(pen, 0.34, 0.12, side, travel); parts.push(sg.d); merge(sg.bbox); }
     else if (v === "I") { circle(LARGE_R); circle(SMALL_R * 0.8); }
     else if (v === "O") {
       // o hook opens upward; on its side (opening toward the next stroke) before n, m, r, l

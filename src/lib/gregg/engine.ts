@@ -68,13 +68,13 @@ function lookup(word: string, opt: Options): { tokens: Token[]; source: Source; 
     return { tokens: rs.flatMap((r) => r.tokens), source: rs.some((r) => r.source === "guess") ? "guess" : rs.some((r) => r.source === "filipino") ? "filipino" : "dict" };
   }
   const entry = DICT && DICT.get(word);
-  if (entry) return { tokens: soundsToTokens(entry.split(""), opt.series), source: "dict", sounds: entry.split("") };
+  if (entry) return { tokens: soundsToTokens(entry.split(""), opt.series, word), source: "dict", sounds: entry.split("") };
   // single letters (initials): spell them out as the letter's name
   if (word.length === 1) { const e = DICT && DICT.get(word); return { tokens: e ? soundsToTokens(e.split(""), opt.series) : [], source: "guess" }; }
   const cap = word[0];
   const isName = opt.namesAsFilipino !== false && (looksFilipino(cap.toUpperCase() + word.slice(1)) || !/[aeiouy]{2}|th|wh|ck|gh|ee|oo/.test(word));
   const sounds = isName ? filipinoToSounds(word) : englishToSounds(word);
-  return { tokens: soundsToTokens(sounds, opt.series), source: isName ? "filipino" : "guess", sounds };
+  return { tokens: soundsToTokens(sounds, opt.series, word), source: isName ? "filipino" : "guess", sounds };
 }
 
 /* ---------------- text -> paragraphs of words ---------------- */

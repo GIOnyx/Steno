@@ -92,6 +92,7 @@ export function englishToSounds(word: string): string[] {
 
 /* ---------------- sounds -> tokens ---------------- */
 const SHORT = new Set(["Eh", "schwa", "ih", "er", "U"]);
+const SHORT_V = new Set(["Eh", "schwa", "ih", "er", "U", "E"]);
 const ABBREV: Record<string, string> = {
   atty: "attorney", attys: "attorneys", hon: "honorable", mr: "mister", mrs: "missus", ms: "miss", dr: "doctor", sps: "spouses", hrs: "heirs",
   no: "number", nos: "numbers", vs: "versus", exh: "exhibit", brgy: "barangay", pros: "prosecutor", engr: "engineer", jr: "junior", sr: "senior",
@@ -99,15 +100,20 @@ const ABBREV: Record<string, string> = {
 };
 export const ABBREVIATIONS = ABBREV;
 
-export function soundsToTokens(sounds: string[], series: Series): Token[] {
+export function soundsToTokens(sounds: string[], series: Series, spelling = ""): Token[] {
   // 1. decode into a list of {type:'c'|'v', code}
   type P = { c?: string; v?: string };
   const ph: P[] = sounds.map((s) => (s in CONS ? { c: CONS[s] } : { v: V[s] || "A" }));
-  // suffix -ing / -ings
-  let ing: "dot" | "dash" | null = null;
+  // word endings (Centennial Lesson 1): -ing dot, -ings disjoined left s, -ly circle, -ily flattened circle, -ingly disjoined circle
+  const ending: Token[] = [];
   const tail = (n: number) => ph.slice(-n).map((p) => p.c || p.v).join(" ");
-  if (ph.length > 3 && (tail(2) === "ih NG" || tail(2) === "Eh NG")) { ph.splice(-2); ing = "dot"; }
-  else if (ph.length > 4 && (tail(3) === "ih NG S" || tail(3) === "Eh NG S")) { ph.splice(-3); ing = "dash"; }
+  const sp = spelling.toLowerCase();
+  const isLE = (t: string) => t === "L E" || t === "L Eh";
+  if (/ingly$/.test(sp) && ph.length > 4 && /^(ih|Eh) NG L (E|Eh)$/.test(tail(4))) { ph.splice(-4); ending.push({ k: "dis", m: "e" }); }
+  else if (/[^aeiou]ily$/.test(sp) && ph.length > 3 && isLE(tail(2))) { ph.splice(-2); if (ph.length > 1 && ph[ph.length - 1].v && SHORT_V.has(ph[ph.length - 1].v!)) ph.splice(-1); ending.push({ k: "v", v: "EF" }); }
+  else if (/ly$/.test(sp) && ph.length > 2 && isLE(tail(2))) { ph.splice(-2); ending.push({ k: "v", v: "E" }); }
+  else if (/ings$/.test(sp) && ph.length > 4 && /^(ih|Eh) NG S$/.test(tail(3))) { ph.splice(-3); ending.push({ k: "dis", m: "s" }); }
+  else if (/ing$/.test(sp) && ph.length > 3 && /^(ih|Eh) NG$/.test(tail(2))) { ph.splice(-2); ending.push({ k: "dot" }); }
   // 2. vowel omission: schwa and unstressed ih/er between consonants are left out (Gregg minor-vowel rule)
   const kept: P[] = [];
   for (let i = 0; i < ph.length; i++) {
@@ -134,6 +140,9 @@ export function soundsToTokens(sounds: string[], series: Series): Token[] {
     if (c === "W") { out.push({ k: "v", v: "U" }); continue; }          // w = oo hook
     if (c === "Y") { if (n && n.v === "U") { out.push({ k: "v", v: "YU" }); i++; } else out.push({ k: "c", s: "Y" }); continue; }
     if (useBlends) {
+      // ted / ded / dit: t or d, an optional short vowel, then t or d
+      if ((c === "T" || c === "D") && n && n.v && SHORT.has(n.v) && n2 && (n2.c === "T" || n2.c === "D")) { out.push({ k: "c", s: "TD" }); i += 2; continue; }
+      if ((c === "T" || c === "D") && n && (n.c === "T" || n.c === "D")) { out.push({ k: "c", s: "TD" }); i += 1; continue; }
       if ((c === "T" || c === "D") && n && n.v && SHORT.has(n.v) && n2 && n2.c === "N" && series !== "anniversary") { out.push({ k: "c", s: "TN" }); i += 2; continue; }
       if ((c === "T" || c === "D") && n && n.c === "N") { out.push({ k: "c", s: "TN" }); i += 1; continue; }
       if ((c === "T" || c === "D") && n && n.v && SHORT.has(n.v) && n2 && n2.c === "M") { out.push({ k: "c", s: "TM" }); i += 2; continue; }
@@ -152,14 +161,16 @@ export function soundsToTokens(sounds: string[], series: Series): Token[] {
     }
     out.push({ k: "c", s: c });
   }
-  if (ing) out.push({ k: ing });
+  out.push(...ending);
   return out;
 }
 
 /* ---------------- brief forms ---------------- */
 // Written in a tiny code: consonant stroke keys and vowels (A E I O U OW OI YU), "." = -ing dot, "-" = dash, "h" = h dot.
 const CENTENNIAL: Record<string, string> = {
-  a: "A", an: "A", the: "TH", of: "O", and: "NT", to: "T", in: "N", not: "N", is: "S", his: "S", it: "T", at: "T",
+  a: ".", an: ".", the: "TH", acknowledge: "A K", acknowledgment: "A K M", advantage: "A V J", disadvantage: "D S A V J",
+  advertise: "A V R T S", advertisement: "A V R T S M", afternoon: "A F TN", anniversary: "A N V R S", appropriate: "A P R",
+  appropriately: "A P R E", been: "B N", able: "A B L", might: "M I T", of: "O", and: "NT", to: "T", in: "N", not: "N", is: "S", his: "S", it: "T", at: "T",
   for: "F", you: "U", your: "U", i: "I", are: "R", our: "R", hour: "R", will: "L", well: "L", can: "K", good: "G",
   be: "B", by: "B", but: "B", have: "V", with: "TH", which: "CH", was: "U S", one: "U N", won: "U N", this: "TH S",
   there: "TH R", their: "TH R", they: "TH A", that: "TH A T", them: "TH M", then: "TH N", than: "TH N", think: "TH .", thing: "TH .",
@@ -175,7 +186,7 @@ const CENTENNIAL: Record<string, string> = {
   usual: "U SH", value: "V L", very: "V E", want: "U NT", where: "U A R", wish: "U SH", why: "I", work: "R K", world: "R L D",
   would: "U D", year: "E R", yesterday: "E S T", yet: "E T", young: "U NG", when: "U N", where_: "", what: "U T", were: "U R",
   she: "SH", he: "E", we: "U E", me: "M E", my: "M I", us: "U S", so: "S O", no: "N O", do: "D U", go: "G O", if: "E F",
-  or: "O R", as: "A S", has: "A S", had: "A D", been: "B N", did: "D D", does: "D S", done: "D N", get: "G T", give: "G V",
+  or: "O R", as: "A S", has: "A S", had: "A D", did: "D D", does: "D S", done: "D N", get: "G T", give: "G V",
   know: "N O", let: "L T", like: "L I K", made: "M A D", make: "M A K", many: "M N E", may: "M A", much: "M CH", must: "M S T",
   other: "O TH R", own: "O N", say: "S A", see: "S E", still: "S T L", such: "S CH", take: "T A K", tell: "T L", these: "TH E S",
   use: "YU S", way: "U A", who: "H U", whom: "H U M", why_: "", yes: "E S", honor: "O N R", honorable: "O N R B", court: "K O R T",
@@ -209,7 +220,7 @@ export function briefForms(series: Series): Record<string, string> {
   for (const k of Object.keys(base)) if (!base[k] || k.endsWith("_")) delete base[k];
   return base;
 }
-const VOWEL_CODES = new Set(["A", "E", "I", "O", "U", "OW", "OI", "YU"]);
+const VOWEL_CODES = new Set(["A", "E", "EF", "I", "O", "U", "OW", "OI", "YU"]);
 export function codeToTokens(code: string): Token[] {
   const out: Token[] = [];
   for (const part of code.trim().split(/\s+/)) {
@@ -217,11 +228,13 @@ export function codeToTokens(code: string): Token[] {
     if (part === ".") out.push({ k: "dot" });
     else if (part === "-") out.push({ k: "dash" });
     else if (part === "h" || part === "H") out.push({ k: "h" });
+    else if (part === "~s") out.push({ k: "dis", m: "s" });
+    else if (part === "~e") out.push({ k: "dis", m: "e" });
     else if (VOWEL_CODES.has(part)) out.push({ k: "v", v: part as never });
     else out.push({ k: "c", s: part });
   }
   return out;
 }
 export function tokensToCode(tokens: Token[]): string {
-  return tokens.map((t) => (t.k === "c" ? t.s : t.k === "v" ? t.v : t.k === "dot" ? "." : t.k === "dash" ? "-" : "h")).join(" ");
+  return tokens.map((t) => (t.k === "c" ? t.s : t.k === "v" ? t.v : t.k === "dot" ? "." : t.k === "dash" ? "-" : t.k === "dis" ? "~" + t.m : "h")).join(" ");
 }
