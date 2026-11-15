@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Gregg outline geometry. A word is a list of tokens (see rules.ts); this file turns the
  * tokens into one SVG path. Units: a short stroke (k, n, t) is 1.0 long. Screen coordinates,
  * y grows downward, strokes are written left to right the way Gregg is written.
@@ -130,7 +130,7 @@ function hookSeg(P: Pt, r: number, open: Pt, travel: Pt): Seg {
 /* ---------- token model ---------- */
 export type Token =
   | { k: "c"; s: string }                         // consonant stroke, key of STROKES
-  | { k: "v"; v: "A" | "E" | "EF" | "I" | "O" | "U" | "OW" | "OI" | "YU" }   // EF = flattened e circle (-ily)
+  | { k: "v"; v: "A" | "E" | "EF" | "I" | "O" | "U" | "OW" | "OI" | "YU"; w?: boolean }   // EF = flattened e (-ily); w = medial w-dash under vowel
   | { k: "dis"; m: "s" | "e" }                     // disjoined mark after the word: left s (-ings) or small circle (-ingly)
   | { k: "dot" }                                   // -ing, and the h dot
   | { k: "dash" }                                  // -ings
@@ -139,7 +139,7 @@ export type Token =
 const isCurveSide = (s: { insideStart: Pt | null }) => !!s.insideStart;
 const HORIZ = new Set(["N", "M", "MN", "R", "L", "K", "G", "NG", "NK"]);
 
-export type Outline = { d: string; w: number; h: number; minX: number; minY: number; dots: Pt[]; dashes: Pt[] };
+export type Outline = { d: string; w: number; h: number; minX: number; minY: number; dots: Pt[]; dashes: Pt[]; filled?: boolean };
 
 export function outlineFor(tokens: Token[]): Outline {
   const parts: string[] = [];
@@ -201,6 +201,7 @@ export function outlineFor(tokens: Token[]): Outline {
     const dirOut = nextSeg ? nextSeg.dirIn : null;
     const circle = (r: number) => { const s = circleSeg(pen, r, side, travel, dirOut); parts.push(s.d); merge(s.bbox); pen = s.end; };
     const hook = (open: Pt) => { const s = hookSeg(pen, HOOK_R, open, travel); parts.push(s.d); merge(s.bbox); pen = s.end; };
+    if (t.w) hook({ x: 0, y: 1 });
     const prevKey = prevKeyOf(tokens, i), nextKey = next;
     if (v === "A") circle(LARGE_R);
     else if (v === "E") circle(SMALL_R);
@@ -230,6 +231,11 @@ export function outlineSvg(o: Outline, scale = 12, cls = "outline"): string {
   const pad = 0.5;
   const W = (o.w + 2 * pad) * scale, H = (o.h + 2 * pad) * scale;
   const tx = pad * scale - 0, ty = (pad - o.minY) * scale;
+  if (o.filled) {
+    const fd = o.dashes.map((p) => `<rect x="${f(p.x)}" y="${f(p.y - 0.035)}" width="0.45" height="0.07" rx="0.035" stroke="none"/>`).join("") + o.dots.map((p) => `<circle cx="${f(p.x)}" cy="${f(p.y)}" r="0.07" stroke="none"/>`).join("");
+    const w = (o.w + 2 * pad) * scale, h = (o.h + 2 * pad) * scale;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(w)} ${f(h)}" width="${f(w)}" height="${f(h)}"><g class="${cls} filled" fill="currentColor" stroke="currentColor" stroke-width="0.035" stroke-linejoin="round" transform="translate(${f(pad * scale - o.minX * scale)} ${f((pad - o.minY) * scale)}) scale(${scale})"><path d="${o.d}"/>${fd}</g></svg>`;
+  }
   const dots = o.dots.map((p) => `<circle cx="${f(p.x * scale)}" cy="${f(p.y * scale)}" r="${f(scale * 0.07)}" fill="currentColor"/>`).join("");
   const dashes = o.dashes.map((p) => `<path d="M${f(p.x * scale)} ${f(p.y * scale)}h${f(scale * 0.45)}"/>`).join("");
   const minX = o.minX;

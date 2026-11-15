@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --paper: #F3F5F9;
   --sheet: #FFFFFF;
   --ink: #1A2233;
@@ -238,6 +238,9 @@ kbd { white-space: nowrap; justify-self: start; padding-inline: 6px !important; 
 .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 12px; }
 .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -2px; margin-right: 5px; }
 .outline { stroke: #1A2233; fill: none; stroke-linecap: round; stroke-linejoin: round; } /* stroke-width comes from the element, already scaled */
+.outline.filled { stroke: #1A2233; fill: #1A2233; } /* font outlines are filled shapes, with a hairline stroke added */
+.outline.filled.brief { fill: #16308F; stroke: #16308F; }
+.outline.filled.guess { fill: #8A5A00; stroke: #8A5A00; }
 .outline.brief { stroke: #16308F; }
 .outline.guess { stroke: #8A5A00; }
 .outline.plain { font: 11px var(--ui); fill: #8A5A00; }

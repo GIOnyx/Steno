@@ -1,8 +1,9 @@
-/* Puts the pieces together: text -> words -> outlines, plus the dictionary loader. */
+﻿/* Puts the pieces together: text -> words -> outlines, plus the dictionary loader. */
 import { outlineFor, type Outline, type Token } from "./strokes";
+import { codeOutline, grasciiOutline, loadDict1930, loadGrasciiFont, lookup1930 } from "./grascii";
 import { ABBREVIATIONS, briefForms, codeToTokens, englishToSounds, filipinoToSounds, soundsToTokens, type Series } from "./rules";
 
-export type Source = "brief" | "custom" | "dict" | "filipino" | "guess" | "plain";
+export type Source = "brief" | "custom" | "dict" | "gregg1930" | "filipino" | "guess" | "plain";
 export type Word = {
   text: string;            // as written, with punctuation
   word: string;            // the bare word that was looked up
@@ -10,6 +11,7 @@ export type Word = {
   tokens: Token[];
   outline: Outline | null; // null for plain text (numbers, symbols)
   sounds?: string[];
+  grascii?: string;        // the 1930 dictionary form, when the outline came from it
 };
 
 let DICT: Map<string, string> | null = null;
@@ -19,9 +21,9 @@ export function loadDictionary(url = "/dict/cmu.txt"): Promise<Map<string, strin
   if (!loading) {
     loading = fetch(url).then((r) => { if (!r.ok) throw new Error("dictionary " + r.status); return r.text(); }).then((t) => {
       const m = new Map<string, string>();
-      for (const line of t.split("\n")) { const i = line.indexOf(" "); if (i > 0) m.set(line.slice(0, i), line.slice(i + 1)); }
+      for (const raw of t.split("\n")) { const line = raw.replace(/\r$/, ""); const i = line.indexOf(" "); if (i > 0) m.set(line.slice(0, i), line.slice(i + 1)); } // tolerate CRLF checkouts
       DICT = m; return m;
-    }).catch((e) => { loading = null; throw e; });
+    }).then(async (m) => { await Promise.all([loadGrasciiFont(), loadDict1930()]); return m; }).catch((e) => { loading = null; throw e; });
   }
   return loading;
 }
@@ -57,8 +59,17 @@ export function renderWord(raw: string, opt: Options): Word {
     }
     if (plural) tokens = tokens.concat([{ k: "c", s: "S" }]);
   }
-  const outline = tokens.length ? outlineFor(tokens) : null;
-  return { text, word: core, source: outline ? source : "plain", tokens, outline, sounds };
+  let outline = tokens.length ? (grasciiOutline(tokens, opt.series) ?? outlineFor(tokens)) : null;
+  let grascii: string | undefined;
+  // The real 1930 outline beats a rule-made one; custom overrides and brief forms still win.
+  if (source !== "custom" && source !== "brief") {
+    const base = key.replace(/'s$/, "");
+    let c = ABBREVIATIONS[base] ? null : lookup1930(base, opt.series);
+    if (c && base !== key) c += "S";
+    const o = c ? codeOutline(c) : null;
+    if (c && o) { outline = o; grascii = c; source = "gregg1930"; }
+  }
+  return { text, word: core, source: outline ? source : "plain", tokens, outline, sounds, grascii };
 }
 
 function lookup(word: string, opt: Options): { tokens: Token[]; source: Source; sounds?: string[] } {

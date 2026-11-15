@@ -1,7 +1,8 @@
-/* Steno-pad PDF: ruled lines, a centre rule, outlines flowed down the left column then the right. */
+﻿/* Steno-pad PDF: ruled lines, a centre rule, outlines flowed down the left column then the right. */
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { Para } from "./engine";
 import { flow, type Line } from "./layout";
+import { EMBOLDEN } from "./grascii";
 
 export type PdfOptions = {
   pageSize: "steno" | "letter" | "a4";
@@ -68,7 +69,11 @@ export async function buildPdf(paras: Para[], opt: PdfOptions): Promise<Uint8Arr
       const color = !opt.colour ? ink : w.source === "brief" || w.source === "custom" ? rgb(0.09, 0.19, 0.56) : w.source === "guess" || w.source === "filipino" ? rgb(0.45, 0.3, 0.05) : ink;
       // drawSvgPath takes the path's own coordinates with y down, anchored at (x, y) = SVG origin
       const top = baseY + (o.minY + o.h) * unit; // rest the outline on the writing line
-      page.drawSvgPath(o.d, { x: x - o.minX * unit, y: top, scale: unit, borderColor: color, borderWidth: 0.95 / unit, borderLineCap: 1 as never });
+      if (o.filled) {
+        if (o.d) page.drawSvgPath(o.d, { x: x - o.minX * unit, y: top, scale: unit, color, borderColor: color, borderWidth: EMBOLDEN, borderLineCap: 1 as never });
+      } else {
+        page.drawSvgPath(o.d, { x: x - o.minX * unit, y: top, scale: unit, borderColor: color, borderWidth: 0.95 / unit, borderLineCap: 1 as never });
+      }
       for (const d of o.dots) page.drawCircle({ x: x + (d.x - o.minX) * unit, y: top - d.y * unit, size: 0.55, color });
       for (const d of o.dashes) page.drawLine({ start: { x: x + (d.x - o.minX) * unit, y: top - d.y * unit }, end: { x: x + (d.x - o.minX + 0.45) * unit, y: top - d.y * unit }, thickness: 0.9, color });
     }

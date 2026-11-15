@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { docxText, loadDictionary, renderText, type Para, type Source, type Word } from "@/lib/gregg/engine";
 import { SERIES, briefForms, tokensToCode, type Series } from "@/lib/gregg/rules";
 import { outlineSvg } from "@/lib/gregg/strokes";
+import { EMBOLDEN } from "@/lib/gregg/grascii";
 import { flow, type Line } from "@/lib/gregg/layout";
 import { buildPdf, type PdfOptions } from "@/lib/gregg/pdf";
 
@@ -149,7 +150,8 @@ export function GreggApp() {
           </div>
         </div>
         <div className="legend">
-          <span><i style={{ background: "#1A2233" }} />From the word’s sounds ({counts.dict || 0})</span>
+          <span><i style={{ background: "#1A2233" }} />1930 dictionary outline ({counts.gregg1930 || 0})</span>
+          <span><i style={{ background: "#475A7A" }} />Built from the word’s sounds ({counts.dict || 0})</span>
           <span><i style={{ background: "#16308F" }} />Brief form ({(counts.brief || 0) + (counts.custom || 0)})</span>
           <span><i style={{ background: "#8A5A00" }} />Spelled out, not in the dictionary ({(counts.guess || 0) + (counts.filipino || 0)})</span>
           <span>Numbers and symbols stay in longhand.</span>
@@ -175,7 +177,7 @@ export function GreggApp() {
                       <td style={{ color: w.source === "brief" || w.source === "custom" ? "#16308F" : w.source === "guess" || w.source === "filipino" ? "#8A5A00" : "#1A2233" }}
                         dangerouslySetInnerHTML={{ __html: w.outline ? outlineSvg(w.outline, 10) : "<span class=muted>longhand</span>" }} />
                       <td>{w.n}</td>
-                      <td className="muted">{sourceText(w.source)}{w.sounds ? <> · sounds <code>{w.sounds.join("")}</code></> : null}</td>
+                      <td className="muted">{sourceText(w.source)}{w.grascii ? <> · <code>{w.grascii}</code></> : w.sounds ? <> · sounds <code>{w.sounds.join("")}</code></> : null}</td>
                       <td><input type="text" style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 12.5 }} defaultValue={custom || tokensToCode(w.tokens)} key={k + (custom || "")}
                         onBlur={(e) => { const v = e.target.value.trim(); if (v !== tokensToCode(w.tokens) || custom) setCustom(k, v === tokensToCode(w.tokens) && !briefs[k] ? "" : v); }} /></td>
                     </tr>
@@ -184,7 +186,7 @@ export function GreggApp() {
               </tbody>
             </table></div>
           )}
-          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Stroke codes: K G R L N M T D TH P B F V SH CH J S X NG NK Y, blends TN TM MN NT MT DF, blend TD (ted/ded/dit), vowels A (large circle) E (small circle) EF (flattened e, -ily) I O U OW OI YU, “.” for the -ing dot (also “a/an”), “~s” for the disjoined -ings, “~e” for the disjoined -ingly, “h” for the h dot. Example: <code>K O R T</code> is “court”.</p>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Stroke codes: K G R L N M T D TH P B F V SH CH J S X NG NK Y, blends TN TM MN NT MT DF, blend TD (ted/ded/dit), vowels A (large circle) E (small circle) EF (flattened e, -ily) I O U OW OI YU (add _ after a vowel for medial w, e.g. E_), “.” for the -ing dot (also “a/an”), “~s” for the disjoined -ings, “~e” for the disjoined -ingly, “h” for the h dot. Example: <code>K O R T</code> is “court”.</p>
         </section>
       </div>
       <div className="gfoot"><span className="hint">Nothing is uploaded; the PDF is made in this browser.</span><button type="button" className="btn primary" onClick={savePdf} disabled={busy}>Save the PDF</button></div>
@@ -192,9 +194,9 @@ export function GreggApp() {
   );
 }
 
-function rank(s: Source) { return s === "guess" ? 0 : s === "filipino" ? 1 : s === "custom" ? 2 : s === "brief" ? 3 : s === "dict" ? 4 : 5; }
+function rank(s: Source) { return s === "guess" ? 0 : s === "filipino" ? 1 : s === "custom" ? 2 : s === "brief" ? 3 : s === "dict" ? 4 : s === "gregg1930" ? 5 : 6; }
 function sourceText(s: Source) {
-  return s === "dict" ? "From its sounds" : s === "brief" ? "Brief form" : s === "custom" ? "Your override" : s === "filipino" ? "Spelled out as a Filipino/Spanish name" : s === "guess" ? "Spelled out (not in the dictionary)" : "Longhand";
+  return s === "gregg1930" ? "1930 Anniversary dictionary outline" : s === "dict" ? "From its sounds" : s === "brief" ? "Brief form" : s === "custom" ? "Your override" : s === "filipino" ? "Spelled out as a Filipino/Spanish name" : s === "guess" ? "Spelled out (not in the dictionary)" : "Longhand";
 }
 
 function PadLine({ line, first, gloss, colour }: { line: Line; first: boolean; gloss: boolean; colour: boolean }) {
@@ -206,12 +208,12 @@ function PadLine({ line, first, gloss, colour }: { line: Line; first: boolean; g
           const w = it.word, x = it.x * UNIT;
           if (!w.outline) return <text key={i} x={x} y={base} fontSize={11} fill="#1A2233" fontFamily="var(--tsn)">{w.text}</text>;
           const o = w.outline;
-          const cls = "outline" + (!colour ? "" : w.source === "brief" || w.source === "custom" ? " brief" : w.source === "guess" || w.source === "filipino" ? " guess" : "");
+          const cls = "outline" + (o.filled ? " filled" : "") + (!colour ? "" : w.source === "brief" || w.source === "custom" ? " brief" : w.source === "guess" || w.source === "filipino" ? " guess" : "");
           return (
-            <g key={i} className={cls} transform={`translate(${x - o.minX * UNIT} ${base - (o.minY + o.h) * UNIT}) scale(${UNIT})`} strokeWidth={1.9 / UNIT}>
+            <g key={i} className={cls} transform={`translate(${x - o.minX * UNIT} ${base - (o.minY + o.h) * UNIT}) scale(${UNIT})`} strokeWidth={o.filled ? EMBOLDEN : 1.9 / UNIT}>
               <path d={o.d} />
-              {o.dots.map((d, j) => <circle key={j} cx={d.x} cy={d.y} r={0.07} fill="currentColor" stroke="none" />)}
-              {o.dashes.map((d, j) => <path key={"d" + j} d={`M${d.x} ${d.y}h0.45`} />)}
+              {o.dots.map((d, j) => <circle key={j} cx={d.x} cy={d.y} r={0.08} fill="currentColor" stroke="none" />)}
+              {o.dashes.map((d, j) => o.filled ? <rect key={"d" + j} x={d.x} y={d.y - 0.035} width={0.45} height={0.07} rx={0.035} /> : <path key={"d" + j} d={`M${d.x} ${d.y}h0.45`} />)}
             </g>
           );
         })}

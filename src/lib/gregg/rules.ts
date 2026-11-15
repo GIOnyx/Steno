@@ -99,98 +99,159 @@ const ABBREV: Record<string, string> = {
 };
 export const ABBREVIATIONS = ABBREV;
 
-export function soundsToTokens(sounds: string[], series: Series, spelling = ""): Token[] {
-  type P = { c?: string; v?: string };
-  const ph: P[] = sounds.map((x) => (x in CONS ? { c: CONS[x] } : { v: V[x] || "A" }));
-  let sp = spelling.toLowerCase();
-  const tail = (n: number) => ph.slice(-n).map((q) => q.c || q.v).join(" ");
-  const head = (n: number) => ph.slice(0, n).map((q) => q.c || q.v).join(" ");
-  const isShort = (v?: string) => !!v && SHORT_V.has(v);
+type Ph = { c?: string; v?: string; aa?: boolean };
+type VowelCode = "A" | "E" | "EF" | "I" | "O" | "U" | "OW" | "OI" | "YU";
 
-  /* ---- word endings (Diamond Jubilee / Centennial theory). Applied from the end inwards. */
+const SUFFIX_RULES: Array<[RegExp, RegExp, (ph: Ph[], sp: string) => { sp: string; tok: Token[] }]> = [
+  [/ingly$/, /^(ih|Eh) NG L (E|Eh)$/, (ph, sp) => { ph.splice(-4); return { sp: sp.slice(0, -5), tok: [{ k: "dis", m: "e" }] }; }],
+  [/[^aeiou]ily$/, /^L (E|Eh)$/, (ph, sp) => {
+    ph.splice(-2);
+    if (ph.length > 1 && isShort(ph[ph.length - 1].v)) ph.splice(-1);
+    return { sp: sp.slice(0, -3), tok: [{ k: "v", v: "EF" }] };
+  }],
+  [/ly$/, /^L (E|Eh)$/, (ph, sp) => { ph.splice(-2); return { sp: sp.slice(0, -2), tok: [{ k: "v", v: "E" }] }; }],
+  [/ings$/, /^(ih|Eh) NG S$/, (ph, sp) => { ph.splice(-3); return { sp: sp.slice(0, -4), tok: [{ k: "dis", m: "s" }] }; }],
+  [/ing$/, /^(ih|Eh) NG$/, (ph, sp) => { ph.splice(-2); return { sp: sp.slice(0, -3), tok: [{ k: "dot" }] }; }],
+  [/[st]ions?$/, /^SH (schwa|Eh|ih) N( S)?$/, (ph, sp) => {
+    const pl = sp.endsWith("s");
+    ph.splice(pl ? -4 : -3);
+    return { sp: sp.replace(/[st]ions?$/, ""), tok: pl ? [{ k: "c", s: "SH" }, { k: "c", s: "S" }] : [{ k: "c", s: "SH" }] };
+  }],
+  [/[st]ion$/, /^SH N$/, (ph, sp) => { ph.splice(-2); return { sp: sp.replace(/[st]ion$/, ""), tok: [{ k: "c", s: "SH" }] }; }],
+  [/ful$/, /^F (schwa|U|Uh|ih|Eh) L$/, (ph, sp) => { ph.splice(-3); return { sp: sp.slice(0, -3), tok: [{ k: "c", s: "F" }] }; }],
+  [/ble$/, /^B (schwa|U|Uh|ih|Eh) L$/, (ph, sp) => { ph.splice(-3); return { sp: sp.slice(0, -3), tok: [{ k: "c", s: "B" }] }; }],
+  [/ther$/, /^TH (er|ER)$/, (ph, sp) => { ph.splice(-2); return { sp: sp.slice(0, -4), tok: [{ k: "c", s: "TH" }] }; }],
+  [/ship$/, /^SH (ih|Eh) P$/, (ph, sp) => { ph.splice(-3); return { sp: sp.slice(0, -4), tok: [{ k: "c", s: "SH" }] }; }],
+  [/ward$/, /^W (er|ER|O) D$/, (ph, sp) => { ph.splice(-3); return { sp: sp.slice(0, -4), tok: [{ k: "c", s: "D" }] }; }],
+  [/hood$/, /^H U D$/, (ph, sp) => { ph.splice(-3); return { sp: sp.slice(0, -4), tok: [{ k: "c", s: "D" }] }; }],
+  [/selves$/, /^S (Eh|E) L V S$/, (ph, sp) => { ph.splice(-5); return { sp: sp.slice(0, -6), tok: [{ k: "c", s: "S" }, { k: "c", s: "S" }] }; }],
+  [/self$/, /^S (Eh|E) L F$/, (ph, sp) => { ph.splice(-4); return { sp: sp.slice(0, -4), tok: [{ k: "c", s: "S" }] }; }],
+  [/[ct]ial$/, /^SH (schwa|U|Uh|ih|Eh) L$/, (ph, sp) => { ph.splice(-3); return { sp: sp.replace(/[ct]ial$/, ""), tok: [{ k: "c", s: "SH" }] }; }],
+  [/(lity|rity)$/, /^(L|R) (ih|Eh|schwa) T (E|Eh)$/, (ph, sp) => {
+    const c = ph[ph.length - 4].c!;
+    ph.splice(-4);
+    return { sp: sp.slice(0, -4), tok: [{ k: "c", s: c }] };
+  }],
+  [/(cal|cle)$/, /^K (schwa|U|Uh|ih|Eh) L$/, (ph, sp) => { ph.splice(-3); return { sp: sp.slice(0, -3), tok: [{ k: "c", s: "K" }] }; }],
+  [/ual$/, /^(U|YU|W) (schwa|U|Uh) L$/, (ph, sp) => { ph.splice(-3); return { sp: sp.slice(0, -3), tok: [{ k: "c", s: "L" }] }; }],
+];
+
+const isShort = (v?: string) => !!v && SHORT_V.has(v);
+const isTD = (x?: Ph) => !!x && (x.c === "T" || x.c === "D");
+const SL_NEIGHBORS = new Set(["K", "G", "F", "V", "SH", "CH", "J"]);
+const BROAD_A_SPELLING = /(?:alm|alf|ather|aha|ama|spa|aza)/;
+const W_VOWELS = new Set(["A", "Eh", "E", "I", "O", "U", "Uh"]);
+
+function stripSuffixes(ph: Ph[], sp: string): { sp: string; ending: Token[] } {
   const ending: Token[] = [];
-  const put = (...t: Token[]) => ending.unshift(...t);
   for (let pass = 0; pass < 3; pass++) {
-    const t2 = tail(2), t3 = tail(3), t4 = tail(4);
-    if (/ingly$/.test(sp) && ph.length > 4 && /^(ih|Eh) NG L (E|Eh)$/.test(t4)) { ph.splice(-4); sp = sp.slice(0, -5); put({ k: "dis", m: "e" }); }
-    else if (/[^aeiou]ily$/.test(sp) && ph.length > 3 && /^L (E|Eh)$/.test(t2)) { ph.splice(-2); if (ph.length > 1 && isShort(ph[ph.length - 1].v)) ph.splice(-1); sp = sp.slice(0, -3); put({ k: "v", v: "EF" }); }
-    else if (/ly$/.test(sp) && ph.length > 2 && /^L (E|Eh)$/.test(t2)) { ph.splice(-2); sp = sp.slice(0, -2); put({ k: "v", v: "E" }); }
-    else if (/ings$/.test(sp) && ph.length > 4 && /^(ih|Eh) NG S$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -4); put({ k: "dis", m: "s" }); }
-    else if (/ing$/.test(sp) && ph.length > 3 && /^(ih|Eh) NG$/.test(t2)) { ph.splice(-2); sp = sp.slice(0, -3); put({ k: "dot" }); }
-    else if (/[st]ions?$/.test(sp) && ph.length > 3 && (/^SH (schwa|Eh|ih) N$/.test(t3) || /^SH (schwa|Eh|ih) N S$/.test(tail(4)))) { const pl = /s$/.test(sp); ph.splice(pl ? -4 : -3); sp = sp.replace(/[st]ions?$/, ""); put({ k: "c", s: "SH" }, ...(pl ? [{ k: "c", s: "S" } as Token] : [])); }
-    else if (/[st]ion$/.test(sp) && ph.length > 2 && /^SH N$/.test(t2)) { ph.splice(-2); sp = sp.replace(/[st]ion$/, ""); put({ k: "c", s: "SH" }); }
-    else if (/ful$/.test(sp) && ph.length > 3 && /^F (schwa|U|Uh|ih|Eh) L$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -3); put({ k: "c", s: "F" }); }
-    else if (/ble$/.test(sp) && ph.length > 3 && /^B (schwa|U|Uh|ih|Eh) L$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -3); put({ k: "c", s: "B" }); }
-    else if (/ther$/.test(sp) && ph.length > 2 && /^TH (er|ER)$/.test(t2)) { ph.splice(-2); sp = sp.slice(0, -4); put({ k: "c", s: "TH" }); }
-    else if (/ship$/.test(sp) && ph.length > 3 && /^SH (ih|Eh) P$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -4); put({ k: "c", s: "SH" }); }
-    else if (/ward$/.test(sp) && ph.length > 3 && /^W (er|ER|O) D$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -4); put({ k: "c", s: "D" }); }
-    else if (/hood$/.test(sp) && ph.length > 3 && /^H U D$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -4); put({ k: "c", s: "D" }); }
-    else if (/selves$/.test(sp) && ph.length > 5 && /^S (Eh|E) L V S$/.test(tail(5))) { ph.splice(-5); sp = sp.slice(0, -6); put({ k: "c", s: "S" }, { k: "c", s: "S" }); }
-    else if (/self$/.test(sp) && ph.length > 4 && /^S (Eh|E) L F$/.test(t4)) { ph.splice(-4); sp = sp.slice(0, -4); put({ k: "c", s: "S" }); }
-    else if (/[ct]ial$/.test(sp) && ph.length > 3 && /^SH (schwa|U|Uh|ih|Eh) L$/.test(t3)) { ph.splice(-3); sp = sp.replace(/[ct]ial$/, ""); put({ k: "c", s: "SH" }); }
-    else if (/(lity|rity)$/.test(sp) && ph.length > 4 && /^(L|R) (ih|Eh|schwa) T (E|Eh)$/.test(t4)) { const c = ph[ph.length - 4].c!; ph.splice(-4); sp = sp.slice(0, -4); put({ k: "c", s: c }); }
-    else if (/(cal|cle)$/.test(sp) && ph.length > 3 && /^K (schwa|U|Uh|ih|Eh) L$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -3); put({ k: "c", s: "K" }); }
-    else if (/ual$/.test(sp) && ph.length > 3 && /^(U|YU|W) (schwa|U|Uh) L$/.test(t3)) { ph.splice(-3); sp = sp.slice(0, -3); put({ k: "c", s: "L" }); }
-    else break;
+    let matched = false;
+    for (const [spRe, phRe, apply] of SUFFIX_RULES) {
+      if (!spRe.test(sp)) continue;
+      // Match the longest tail window (2..5 phonemes) that fits the phonetic suffix
+      for (const n of [5, 4, 3, 2]) {
+        if (ph.length <= n) continue;
+        const tailStr = ph.slice(-n).map((q) => q.c || q.v).join(" ");
+        if (!phRe.test(tailStr)) continue;
+        const res = apply(ph, sp);
+        sp = res.sp;
+        ending.unshift(...res.tok);
+        matched = true;
+        break;
+      }
+      if (matched) break;
+    }
+    if (!matched) break;
   }
+  return { sp, ending };
+}
 
-  /* ---- word beginnings */
+function stripPrefixes(ph: Ph[], sp: string): void {
+  const head = (n: number) => ph.slice(0, n).map((q) => q.c || q.v).join(" ");
   const h3 = head(3), h2 = head(2);
-  if (/^co[nm]/.test(sp) && /^K (schwa|U|Uh|O|A) (N|M)$/.test(h3) && ph[3] && ph[3].c) ph.splice(1, 2);                 // con-, com- = k
-  else if (/^e[xg]/.test(sp) && /^(Eh|E|ih) (K|G) S$/.test(h3)) ph.splice(1, 1);                                     // ex- = e s
-  else if (/^(in|en|un|im|em)/.test(sp) && /^(Eh|ih|U|Uh|schwa|E) (N|M) (T|D)$/.test(h3)) ph.splice(0, 1);             // inter-, ent-, ind- = nt blend
-  else if (/^(in|en|un|im|em)/.test(sp) && /^(Eh|ih|U|Uh|schwa|E) (N|M)$/.test(h2) && ph[2] && ph[2].c) ph.splice(0, 1); // in-, en-, un- = n
-  else if (/^al[^aeiouy]/.test(sp) && /^(O|A) L$/.test(h2) && ph[2] && ph[2].c) ph.splice(0, 2, { v: "O" });        // al- = o
-  else if (/^(be|de|re|pro|per|pur|for|fur|mis|dis|des)[^aeiouy]/.test(sp) && ph[0] && ph[0].c && ph[1] && ph[1].v && isShort(ph[1].v) && ph[2] && ph[2].c) ph.splice(1, 1); // prefix vowel omitted
+  if (/^co[nm]/.test(sp) && /^K (schwa|U|Uh|O|A) (N|M)$/.test(h3) && ph[3]?.c) ph.splice(1, 2);
+  else if (/^e[xg]/.test(sp) && /^(Eh|E|ih) (K|G) S$/.test(h3)) ph.splice(1, 1);
+  else if (/^(in|en|un|im|em)/.test(sp) && /^(Eh|ih|U|Uh|schwa|E) (N|M) (T|D)$/.test(h3)) ph.splice(0, 1);
+  else if (/^(in|en|un|im|em)/.test(sp) && /^(Eh|ih|U|Uh|schwa|E) (N|M)$/.test(h2) && ph[2]?.c) ph.splice(0, 1);
+  else if (/^al[^aeiouy]/.test(sp) && /^(O|A) L$/.test(h2) && ph[2]?.c) ph.splice(0, 2, { v: "O" });
+  else if (/^(be|de|re|pro|per|pur|for|fur|mis|dis|des)[^aeiouy]/.test(sp) && ph[0]?.c && ph[1]?.v && isShort(ph[1].v) && ph[2]?.c) ph.splice(1, 1);
+}
 
-  /* ---- vowel omission: unstressed minor vowels between consonants; short u before n and m */
-  const kept: P[] = [];
+function normalizeAndOmitVowels(ph: Ph[], sp: string): Ph[] {
+  const kept: Ph[] = [];
+  const oShapedAA = (/(?:o|(?:w|qu)a)/.test(sp)) && !BROAD_A_SPELLING.test(sp);
   for (let i = 0; i < ph.length; i++) {
     const p = ph[i];
+    const prev = kept[kept.length - 1], next = ph[i + 1];
+    // American AA (hot, block, abdominal, want) is the Gregg O hook unless before r (car) or broad-a words
+    if (p.aa && next?.c !== "R" && oShapedAA) { kept.push({ v: "O" }); continue; }
     if (p.v === "schwa" || p.v === "ih" || p.v === "er") {
-      const prev = kept[kept.length - 1], next = ph[i + 1];
-      const between = prev && prev.c && next && next.c;
-      if (p.v === "er") { if (!prev) kept.push({ v: "Eh" }); kept.push({ c: "R" }); continue; } // letter, summer: r alone
-      if (between) continue;
-      kept.push({ v: p.v === "schwa" ? (i === ph.length - 1 ? "A" : "U") : "Eh" });
+      if (p.v === "er") { if (!prev) kept.push({ v: "Eh" }); kept.push({ c: "R" }); continue; }
+      if (prev && (prev.c || prev.v === "I") && next?.c) continue;
+      if (p.v === "schwa") {
+        const init = i === 0 ? (sp.startsWith("a") ? "A" : sp.startsWith("o") ? "O" : "U") : i === ph.length - 1 ? "A" : "U";
+        kept.push({ v: init });
+      } else {
+        kept.push({ v: "Eh" });
+      }
       continue;
     }
     if (p.v === "ER") { kept.push({ v: "Eh" }, { c: "R" }); continue; }
-    if (p.v === "Uh" && kept.length && kept[kept.length - 1].c && ph[i + 1] && (ph[i + 1].c === "N" || ph[i + 1].c === "M")) continue; // son, come, summer
+    if (p.v === "Uh" && prev?.c && (next?.c === "N" || next?.c === "M")) continue; // son, come, summer
     kept.push(p);
   }
+  return kept;
+}
 
-  /* ---- blends and special consonants */
+const toVowelCode = (v: string): VowelCode => (v === "Eh" ? "E" : v === "Uh" ? "U" : v) as VowelCode;
+
+function applyBlends(kept: Ph[], sp: string): Token[] {
   const out: Token[] = [];
+  const hasX = sp.includes("x");
   for (let i = 0; i < kept.length; i++) {
     const p = kept[i], n = kept[i + 1], n2 = kept[i + 2];
-    if (p.v) { out.push({ k: "v", v: (p.v === "Eh" ? "E" : p.v === "Uh" ? "U" : p.v) as never }); continue; }
+    if (p.v) { out.push({ k: "v", v: toVowelCode(p.v) }); continue; }
     const c = p.c!;
     if (c === "H") { out.push({ k: "h" }); continue; }
-    if (c === "W") { out.push({ k: "v", v: "U" }); continue; }
-    if (c === "Y") { if (n && n.v === "U") { out.push({ k: "v", v: "YU" }); i++; } else out.push({ k: "c", s: "Y" }); continue; }
-    const TD = (x?: P) => !!x && (x.c === "T" || x.c === "D");
-    if (TD(p) && n && isShort(n.v) && TD(n2)) { out.push({ k: "c", s: "TD" }); i += 2; continue; }
-    if (TD(p) && TD(n)) { out.push({ k: "c", s: "TD" }); i += 1; continue; }
-    if (TD(p) && n && isShort(n.v) && n2 && n2.c === "N") { out.push({ k: "c", s: "TN" }); i += 2; continue; }
-    if (TD(p) && n && n.c === "N") { out.push({ k: "c", s: "TN" }); i += 1; continue; }
-    if (TD(p) && n && isShort(n.v) && n2 && n2.c === "M") { out.push({ k: "c", s: "TM" }); i += 2; continue; }
-    if (TD(p) && n && n.c === "M") { out.push({ k: "c", s: "TM" }); i += 1; continue; }
-    if (c === "M" && n && isShort(n.v) && n2 && (n2.c === "N" || n2.c === "M")) { out.push({ k: "c", s: "MN" }); i += 2; continue; }
-    if (c === "M" && n && (n.c === "N" || n.c === "M")) { out.push({ k: "c", s: "MN" }); i += 1; continue; }
-    if (c === "N" && TD(n)) { out.push({ k: "c", s: "NT" }); i += 1; continue; }
-    if (c === "M" && TD(n)) { out.push({ k: "c", s: "MT" }); i += 1; continue; }
-    if (c === "D" && n && isShort(n.v) && n2 && (n2.c === "F" || n2.c === "V")) { out.push({ k: "c", s: "DF" }); i += 2; continue; }
-    if (c === "D" && n && (n.c === "F" || n.c === "V")) { out.push({ k: "c", s: "DF" }); i += 1; continue; }
-    if (c === "T" && n && n.v === "Eh" && n2 && n2.c === "V" && i >= kept.length - 3) { out.push({ k: "c", s: "DF" }); i += 2; continue; } // -tive
-    if (c === "NG" && n && n.c === "K") { out.push({ k: "c", s: "NK" }); i += 1; continue; }
+    if (c === "W") {
+      // Medial w after a consonant before a vowel writes the w-dash under the vowel (quick, dwell)
+      if (kept[i - 1]?.c && n?.v && W_VOWELS.has(n.v)) { out.push({ k: "v", v: toVowelCode(n.v), w: true }); i++; }
+      else out.push({ k: "v", v: "U" });
+      continue;
+    }
+    if (c === "Y") { if (n?.v === "U") { out.push({ k: "v", v: "YU" }); i++; } else out.push({ k: "c", s: "Y" }); continue; }
+    if (isTD(p) && n && isShort(n.v) && isTD(n2)) { out.push({ k: "c", s: "TD" }); i += 2; continue; }
+    if (isTD(p) && isTD(n)) { out.push({ k: "c", s: "TD" }); i += 1; continue; }
+    if (isTD(p) && n && isShort(n.v) && n2?.c === "N") { out.push({ k: "c", s: "TN" }); i += 2; continue; }
+    if (isTD(p) && n?.c === "N") { out.push({ k: "c", s: "TN" }); i += 1; continue; }
+    if (isTD(p) && n && isShort(n.v) && n2?.c === "M") { out.push({ k: "c", s: "TM" }); i += 2; continue; }
+    if (isTD(p) && n?.c === "M") { out.push({ k: "c", s: "TM" }); i += 1; continue; }
+    if (c === "M" && n && isShort(n.v) && (n2?.c === "N" || n2?.c === "M")) { out.push({ k: "c", s: "MN" }); i += 2; continue; }
+    if (c === "M" && (n?.c === "N" || n?.c === "M")) { out.push({ k: "c", s: "MN" }); i += 1; continue; }
+    if (c === "N" && isTD(n)) { out.push({ k: "c", s: "NT" }); i += 1; continue; }
+    if (c === "M" && isTD(n)) { out.push({ k: "c", s: "MT" }); i += 1; continue; }
+    if (c === "D" && n && isShort(n.v) && (n2?.c === "F" || n2?.c === "V")) { out.push({ k: "c", s: "DF" }); i += 2; continue; }
+    if (c === "D" && (n?.c === "F" || n?.c === "V")) { out.push({ k: "c", s: "DF" }); i += 1; continue; }
+    if (c === "T" && n?.v === "Eh" && n2?.c === "V" && i >= kept.length - 3) { out.push({ k: "c", s: "DF" }); i += 2; continue; }
+    if (c === "NG" && n?.c === "K") { out.push({ k: "c", s: "NK" }); i += 1; continue; }
+    if (c === "K" && n?.c === "S" && hasX) { out.push({ k: "c", s: "X" }); i += 1; continue; }
     if (c === "S") {
-      const nb = (n && n.c) || (kept[i - 1] && kept[i - 1].c) || "";
-      out.push({ k: "c", s: ["K", "G", "F", "V", "SH", "CH", "J"].includes(nb) ? "SL" : "S" });
+      const prevC = kept[i - 1]?.c || "";
+      const left = (n?.c && SL_NEIGHBORS.has(n.c)) || (!n?.v && SL_NEIGHBORS.has(prevC));
+      out.push({ k: "c", s: left ? "SL" : "S" });
       continue;
     }
     out.push({ k: "c", s: c });
   }
+  return out;
+}
+
+export function soundsToTokens(sounds: string[], series: Series, spelling = ""): Token[] {
+  const ph: Ph[] = sounds.map((x) => (x in CONS ? { c: CONS[x] } : { v: V[x] || "A", aa: x === "a" }));
+  const { sp, ending } = stripSuffixes(ph, spelling.toLowerCase());
+  stripPrefixes(ph, sp);
+  const kept = normalizeAndOmitVowels(ph, sp);
+  const out = applyBlends(kept, sp);
   out.push(...ending);
   void series;
   return out;
@@ -265,11 +326,12 @@ export function codeToTokens(code: string): Token[] {
     else if (part === "h" || part === "H") out.push({ k: "h" });
     else if (part === "~s") out.push({ k: "dis", m: "s" });
     else if (part === "~e") out.push({ k: "dis", m: "e" });
+    else if (part.endsWith("_") && VOWEL_CODES.has(part.slice(0, -1))) out.push({ k: "v", v: part.slice(0, -1) as never, w: true });
     else if (VOWEL_CODES.has(part)) out.push({ k: "v", v: part as never });
     else out.push({ k: "c", s: part });
   }
   return out;
 }
 export function tokensToCode(tokens: Token[]): string {
-  return tokens.map((t) => (t.k === "c" ? t.s : t.k === "v" ? t.v : t.k === "dot" ? "." : t.k === "dash" ? "-" : t.k === "dis" ? "~" + t.m : "h")).join(" ");
+  return tokens.map((t) => (t.k === "c" ? t.s : t.k === "v" ? t.v + (t.w ? "_" : "") : t.k === "dot" ? "." : t.k === "dash" ? "-" : t.k === "dis" ? "~" + t.m : "h")).join(" ");
 }
